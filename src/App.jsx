@@ -17,7 +17,7 @@ const C = {
   green:   '#4AFF6A',
 }
 
-const SPLIT = {
+const DEFAULT_SPLIT = {
   push_a: {
     key: 'push_a', label: 'Push A', sub: 'Chest & Triceps',
     exercises: [
@@ -73,13 +73,26 @@ const SPLIT = {
   },
 }
 
+const STORAGE_KEY = 'swolebro_program'
+
+function loadProgram() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY)
+    if (saved) return JSON.parse(saved)
+  } catch {}
+  return JSON.parse(JSON.stringify(DEFAULT_SPLIT))
+}
+
+function saveProgram(split) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(split))
+}
+
 function fmt(n) {
   if (n == null) return 'TBD'
   return Number.isInteger(n) ? String(n) : parseFloat(n.toFixed(1)).toString()
 }
 
-function buildCoachSys(dayKey, logs, exercises) {
-  const day = SPLIT[dayKey]
+function buildCoachSys(day, logs, exercises) {
   const list = exercises.map((ex, i) => {
     const done = (logs[ex.id] || []).length > 0
     const t = ex.type === 'straight'
@@ -107,8 +120,7 @@ Actions:
 const PROG_SYS = `Expert RP Strength coach. Return next week's targets. Add 5lb compounds OR +1 rep. Nautilus=5lb increments. Cable=4.5lb. Return ONLY valid JSON:
 {"week_number":4,"targets":[{"exercise_id":"<id>","exercise_name":"<n>","set_type":"straight|myo","target_weight":<num>,"target_sets":<int|null>,"target_reps_min":<int>,"target_reps_max":<int>,"target_rir":<int>,"coaching_note":"<or null>"}],"flags":[],"session_summary":"<2 sentences>"}`
 
-function buildProgPrompt(dayKey, logs, exercises) {
-  const day = SPLIT[dayKey]
+function buildProgPrompt(day, logs, exercises) {
   const lines = exercises.map(ex => {
     const sets = logs[ex.id] || []
     if (!sets.length) return `[${ex.id}] ${ex.name}: SKIPPED`
@@ -136,7 +148,7 @@ async function callClaude(system, messages, maxTokens = 400) {
   return data.content.filter(b => b.type === 'text').map(b => b.text).join('')
 }
 
-function HomeScreen({ onStart }) {
+function HomeScreen({ split, onStart, onEdit }) {
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '36px 20px 40px' }}>
       <div style={{ marginBottom: 40 }}>
@@ -146,7 +158,7 @@ function HomeScreen({ onStart }) {
       </div>
       <div style={{ fontSize: 13, color: C.muted, letterSpacing: 2, marginBottom: 16, fontWeight: 'bold' }}>SELECT TODAY'S SESSION</div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-        {Object.values(SPLIT).map(d => (
+        {Object.values(split).map(d => (
           <button key={d.key} onClick={() => onStart(d.key)}
             style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: '22px 18px', textAlign: 'left', cursor: 'pointer', color: C.text, fontFamily: 'inherit' }}>
             <div style={{ fontSize: 24, fontWeight: 800, marginBottom: 4, color: C.text }}>{d.label}</div>
@@ -155,12 +167,205 @@ function HomeScreen({ onStart }) {
           </button>
         ))}
       </div>
+      <button onClick={onEdit}
+        style={{ width: '100%', marginTop: 20, padding: '16px 0', background: 'none', border: `1px solid ${C.border}`, borderRadius: 14, color: C.muted, fontSize: 14, fontWeight: 'bold', letterSpacing: 2, cursor: 'pointer', fontFamily: 'inherit' }}>
+        EDIT PROGRAM
+      </button>
     </div>
   )
 }
 
-function SessionScreen({ dayKey, onBack }) {
-  const day = SPLIT[dayKey]
+function EditScreen({ split, onSave, onBack }) {
+  const [draft, setDraft] = useState(() => JSON.parse(JSON.stringify(split)))
+  const [openDay, setOpenDay] = useState(null)
+  const [editingIdx, setEditingIdx] = useState(null)
+
+  function updateExercise(dayKey, idx, field, value) {
+    setDraft(prev => {
+      const next = JSON.parse(JSON.stringify(prev))
+      const numFields = ['sets', 'min', 'max', 'w']
+      if (numFields.includes(field)) {
+        next[dayKey].exercises[idx][field] = value === '' ? null : Number(value)
+      } else {
+        next[dayKey].exercises[idx][field] = value
+      }
+      return next
+    })
+  }
+
+  function removeExercise(dayKey, idx) {
+    setDraft(prev => {
+      const next = JSON.parse(JSON.stringify(prev))
+      next[dayKey].exercises.splice(idx, 1)
+      return next
+    })
+    setEditingIdx(null)
+  }
+
+  function addExercise(dayKey) {
+    setDraft(prev => {
+      const next = JSON.parse(JSON.stringify(prev))
+      const n = next[dayKey].exercises.length
+      next[dayKey].exercises.push({
+        id: `new_${Date.now()}`, name: 'New Exercise', type: 'straight', sets: 3, min: 8, max: 12, w: null
+      })
+      return next
+    })
+  }
+
+  function moveExercise(dayKey, idx, dir) {
+    const target = idx + dir
+    setDraft(prev => {
+      const next = JSON.parse(JSON.stringify(prev))
+      const arr = next[dayKey].exercises
+      if (target < 0 || target >= arr.length) return prev
+      ;[arr[idx], arr[target]] = [arr[target], arr[idx]]
+      return next
+    })
+    setEditingIdx(null)
+  }
+
+  function handleSave() {
+    saveProgram(draft)
+    onSave(draft)
+  }
+
+  function handleReset() {
+    const fresh = JSON.parse(JSON.stringify(DEFAULT_SPLIT))
+    setDraft(fresh)
+    saveProgram(fresh)
+    onSave(fresh)
+  }
+
+  const inputStyle = {
+    background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text,
+    fontSize: 15, padding: '8px 10px', width: '100%', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box'
+  }
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', padding: '16px 18px', borderBottom: `1px solid ${C.border}`, gap: 12 }}>
+        <button onClick={onBack} style={{ background: 'none', border: 'none', color: C.sub, fontSize: 30, cursor: 'pointer', padding: '4px 8px', lineHeight: 1 }}>←</button>
+        <div style={{ flex: 1, fontSize: 22, fontWeight: 800, color: C.text }}>Edit Program</div>
+      </div>
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px 120px' }}>
+        {Object.values(draft).map(day => (
+          <div key={day.key} style={{ marginBottom: 16 }}>
+            <button onClick={() => { setOpenDay(openDay === day.key ? null : day.key); setEditingIdx(null) }}
+              style={{ width: '100%', background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: '16px 18px', textAlign: 'left', cursor: 'pointer', color: C.text, fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontSize: 20, fontWeight: 800 }}>{day.label}</div>
+                <div style={{ fontSize: 14, color: C.sub, marginTop: 2 }}>{day.sub}</div>
+              </div>
+              <div style={{ fontSize: 14, color: C.muted, fontWeight: 'bold' }}>{day.exercises.length} EX {openDay === day.key ? '▲' : '▼'}</div>
+            </button>
+
+            {openDay === day.key && (
+              <div style={{ borderLeft: `2px solid ${C.border}`, marginLeft: 16, paddingLeft: 14, marginTop: 8 }}>
+                {day.exercises.map((ex, i) => {
+                  const isEditing = editingIdx === `${day.key}-${i}`
+                  return (
+                    <div key={ex.id + i} style={{ background: isEditing ? C.surface : 'transparent', border: isEditing ? `1px solid ${C.border}` : '1px solid transparent', borderRadius: 10, padding: '12px 14px', marginBottom: 6 }}>
+                      {!isEditing ? (
+                        <div onClick={() => setEditingIdx(`${day.key}-${i}`)} style={{ cursor: 'pointer' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ fontSize: 16, fontWeight: 600, color: C.text }}>{ex.name}</div>
+                            <div style={{ fontSize: 12, color: ex.type === 'myo' ? C.orange : C.blue, fontWeight: 'bold', letterSpacing: 1 }}>{ex.type === 'myo' ? 'MYO' : 'SETS'}</div>
+                          </div>
+                          <div style={{ fontSize: 13, color: C.muted, marginTop: 4 }}>
+                            {ex.type === 'straight' ? `${ex.sets}×${ex.min}-${ex.max} @ ${fmt(ex.w)}lb${ex.note || ''}` : `Myo @ ${fmt(ex.w)}lb`}
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                          <div>
+                            <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>NAME</div>
+                            <input value={ex.name} onChange={e => updateExercise(day.key, i, 'name', e.target.value)} style={inputStyle} />
+                          </div>
+                          <div style={{ display: 'flex', gap: 10 }}>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>TYPE</div>
+                              <select value={ex.type} onChange={e => updateExercise(day.key, i, 'type', e.target.value)}
+                                style={{ ...inputStyle, appearance: 'auto' }}>
+                                <option value="straight">Straight</option>
+                                <option value="myo">Myo</option>
+                              </select>
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>WEIGHT</div>
+                              <input type="number" value={ex.w ?? ''} placeholder="TBD" onChange={e => updateExercise(day.key, i, 'w', e.target.value)} style={inputStyle} />
+                            </div>
+                          </div>
+                          {ex.type === 'straight' && (
+                            <div style={{ display: 'flex', gap: 10 }}>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>SETS</div>
+                                <input type="number" value={ex.sets ?? ''} onChange={e => updateExercise(day.key, i, 'sets', e.target.value)} style={inputStyle} />
+                              </div>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>MIN REPS</div>
+                                <input type="number" value={ex.min ?? ''} onChange={e => updateExercise(day.key, i, 'min', e.target.value)} style={inputStyle} />
+                              </div>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>MAX REPS</div>
+                                <input type="number" value={ex.max ?? ''} onChange={e => updateExercise(day.key, i, 'max', e.target.value)} style={inputStyle} />
+                              </div>
+                            </div>
+                          )}
+                          <div>
+                            <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>NOTE</div>
+                            <input value={ex.note || ''} placeholder="e.g. /side" onChange={e => updateExercise(day.key, i, 'note', e.target.value || undefined)} style={inputStyle} />
+                          </div>
+                          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                            <button onClick={() => moveExercise(day.key, i, -1)} disabled={i === 0}
+                              style={{ flex: 1, padding: '8px 0', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, color: i === 0 ? C.border : C.sub, fontSize: 13, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>
+                              ▲ UP
+                            </button>
+                            <button onClick={() => moveExercise(day.key, i, 1)} disabled={i === day.exercises.length - 1}
+                              style={{ flex: 1, padding: '8px 0', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, color: i === day.exercises.length - 1 ? C.border : C.sub, fontSize: 13, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>
+                              ▼ DOWN
+                            </button>
+                            <button onClick={() => removeExercise(day.key, i)}
+                              style={{ flex: 1, padding: '8px 0', background: '#2A0000', border: '1px solid #5A0000', borderRadius: 8, color: '#FF5555', fontSize: 13, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>
+                              DELETE
+                            </button>
+                          </div>
+                          <button onClick={() => setEditingIdx(null)}
+                            style={{ padding: '8px 0', background: 'none', border: `1px solid ${C.border}`, borderRadius: 8, color: C.sub, fontSize: 13, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>
+                            DONE EDITING
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+                <button onClick={() => addExercise(day.key)}
+                  style={{ width: '100%', padding: '12px 0', background: 'none', border: `1px dashed ${C.border}`, borderRadius: 10, color: C.muted, fontSize: 14, fontWeight: 'bold', letterSpacing: 1, cursor: 'pointer', marginTop: 4, fontFamily: 'inherit' }}>
+                  + ADD EXERCISE
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div style={{ position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 480, padding: '16px 18px', background: C.bg, borderTop: `1px solid ${C.border}`, display: 'flex', gap: 10, boxSizing: 'border-box' }}>
+        <button onClick={handleReset}
+          style={{ flex: 1, padding: '16px 0', background: 'none', border: `1px solid ${C.border}`, borderRadius: 12, color: C.muted, fontSize: 15, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>
+          RESET
+        </button>
+        <button onClick={handleSave}
+          style={{ flex: 2, padding: '16px 0', background: C.acc, border: 'none', borderRadius: 12, color: C.bg, fontSize: 17, fontWeight: 800, letterSpacing: 1, cursor: 'pointer', fontFamily: 'inherit' }}>
+          SAVE CHANGES
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function SessionScreen({ dayKey, split, onBack }) {
+  const day = split[dayKey]
   const [tab, setTab] = useState('coach')
   const [exercises, setExercises] = useState(() => JSON.parse(JSON.stringify(day.exercises)))
   const [logs, setLogs] = useState({})
@@ -183,7 +388,7 @@ function SessionScreen({ dayKey, onBack }) {
     try {
       const firstUser = newChat.findIndex(m => m.role === 'user')
       const msgs = newChat.slice(firstUser).map(m => ({ role: m.role, content: m.content }))
-      const raw = await callClaude(buildCoachSys(dayKey, logs, exercises), msgs)
+      const raw = await callClaude(buildCoachSys(day, logs, exercises), msgs)
       let parsed
       try { parsed = JSON.parse(raw.replace(/```json|```/g, '').trim()) }
       catch { parsed = { message: raw, actions: [] } }
@@ -217,7 +422,7 @@ function SessionScreen({ dayKey, onBack }) {
   async function runProg(finalLogs, finalEx) {
     setScreen('processing')
     try {
-      const raw = await callClaude(PROG_SYS, [{ role: 'user', content: buildProgPrompt(dayKey, finalLogs, finalEx) }], 1000)
+      const raw = await callClaude(PROG_SYS, [{ role: 'user', content: buildProgPrompt(day, finalLogs, finalEx) }], 1000)
       const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim())
       setResult(parsed); setScreen('results')
     } catch (e) {
@@ -346,10 +551,18 @@ function SessionScreen({ dayKey, onBack }) {
 }
 
 export default function App() {
+  const [screen, setScreen] = useState('home')
   const [dayKey, setDayKey] = useState(null)
+  const [split, setSplit] = useState(loadProgram)
+
+  function startSession(key) { setDayKey(key); setScreen('session') }
+  function goHome() { setDayKey(null); setScreen('home') }
+
   return (
     <div style={{ maxWidth: 480, margin: '0 auto', minHeight: '100vh', background: C.bg, display: 'flex', flexDirection: 'column', color: C.text, fontFamily: '-apple-system, Arial, sans-serif' }}>
-      {!dayKey ? <HomeScreen onStart={k => setDayKey(k)} /> : <SessionScreen dayKey={dayKey} onBack={() => setDayKey(null)} />}
+      {screen === 'home' && <HomeScreen split={split} onStart={startSession} onEdit={() => setScreen('edit')} />}
+      {screen === 'edit' && <EditScreen split={split} onSave={s => { setSplit(s); setScreen('home') }} onBack={() => setScreen('home')} />}
+      {screen === 'session' && <SessionScreen dayKey={dayKey} split={split} onBack={goHome} />}
     </div>
   )
 }
