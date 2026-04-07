@@ -62,19 +62,15 @@ const DEFAULT_SPLIT = {
   pull_a: {
     key: 'pull_a', label: 'Pull A', sub: 'Back Width · Biceps · Legs',
     exercises: [
-      { id: 'pd_over',    name: 'Lat Pulldown Overhand',           type: 'straight', sets: 4, min: 8,  max: 10, w: 148 },
       { id: 'lat_pr',     name: 'Cable Lat Prayers',               type: 'myo',      w: 54 },
       { id: 'row_mid',    name: 'CS Row Mid',                      type: 'straight', sets: 3, min: 10, max: 12, w: 135 },
-      { id: 'row_v',      name: 'Seated Row V-bar',                type: 'straight', sets: 3, min: 12, max: 12, w: 120 },
       { id: 'fp_a',       name: 'Cable Face Pulls',                type: 'myo',      w: 54 },
-      { id: 'rd_a',       name: 'Cable Rear Delt Fly',             type: 'myo',      w: null },
       { id: 'cc_a',       name: 'Cable Curls',                     type: 'myo',      w: 38.5 },
       { id: 'hammer_a',   name: 'Hammer Curls',                    type: 'straight', sets: 3, min: 12, max: 12, w: null },
       { id: 'rdl',        name: 'Romanian Deadlift',               type: 'straight', sets: 3, min: 8,  max: 10, w: null },
       { id: 'ham_a',      name: 'Nautilus Hamstring Curls',        type: 'myo',      w: 80 },
       { id: 'leg_pr_a',   name: 'Leg Press',                       type: 'straight', sets: 3, min: 10, max: 10, w: 135,  note: '/side' },
       { id: 'leg_ext_a',  name: 'Nautilus Leg Extensions',         type: 'myo',      w: 100 },
-      { id: 'hip_ab_a',   name: 'Hip Abductor Machine',            type: 'straight', sets: 3, min: 15, max: 15, w: null },
       { id: 'ab_wheel_a', name: 'Ab Wheel Rollout',                type: 'straight', sets: 2, min: 10, max: 10, w: null },
     ]
   },
@@ -83,7 +79,6 @@ const DEFAULT_SPLIT = {
     exercises: [
       { id: 'pd_under',   name: 'Lat Pulldown Underhand',          type: 'straight', sets: 4, min: 8,  max: 12, w: null },
       { id: 'row_high',   name: 'CS Row High',                     type: 'straight', sets: 3, min: 10, max: 15, w: null },
-      { id: 'row_wide',   name: 'Seated Row Wide',                 type: 'straight', sets: 3, min: 10, max: 12, w: null },
       { id: 'fp_b',       name: 'Cable Face Pulls',                type: 'myo',      w: null },
       { id: 'rd_b',       name: 'Cable Rear Delt Fly',             type: 'myo',      w: null },
       { id: 'inc_curl',   name: 'Incline DB Curls',                type: 'myo',      w: null },
