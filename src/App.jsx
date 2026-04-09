@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 
-const WEEK = 3
+const WEEK = 4
 const MESO = 1
 const ANTHROPIC_KEY = import.meta.env.VITE_ANTHROPIC_KEY
 
@@ -49,13 +49,13 @@ const DEFAULT_SPLIT = {
     key: 'pull_a', label: 'Pull A', sub: 'Back Width & Biceps',
     exercises: [
       { id: 'pd_over',  name: 'Lat Pulldown Overhand',       type: 'straight', sets: 4, min: 8,  max: 10, w: 148 },
-      { id: 'rdl',      name: 'Romanian Deadlift',           type: 'straight', sets: 3, min: 8,  max: 10, w: null },
-      { id: 'row_mid',  name: 'CS Row Mid',                  type: 'straight', sets: 3, min: 10, max: 12, w: 135 },
+      { id: 'rdl',      name: 'Romanian Deadlift',           type: 'straight', sets: 3, min: 8,  max: 8,  w: 135 },
+      { id: 'row_mid',  name: 'CS Row Mid',                  type: 'straight', sets: 3, min: 10, max: 12, w: 140 },
       { id: 'ham_a',    name: 'Nautilus Hamstring Curls',    type: 'myo',      w: 80 },
       { id: 'row_v',    name: 'Seated Row V-bar',            type: 'straight', sets: 3, min: 12, max: 12, w: 120 },
-      { id: 'cc_a',     name: 'Cable Curls',                 type: 'myo',      w: 38.5 },
-      { id: 'fp_a',     name: 'Cable Face Pulls',            type: 'myo',      w: 54 },
-      { id: 'lat_pr',   name: 'Cable Lat Prayers',           type: 'myo',      w: 54 },
+      { id: 'cc_a',     name: 'Cable Curls',                 type: 'myo',      w: 43 },
+      { id: 'fp_a',     name: 'Cable Face Pulls',            type: 'myo',      w: 58.5 },
+      { id: 'lat_pr',   name: 'Cable Lat Prayers',           type: 'myo',      w: 58.5 },
       { id: 'rd_a',     name: 'CS Rear Delt Raises',         type: 'myo',      w: null },
     ]
   },
