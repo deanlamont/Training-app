@@ -76,6 +76,7 @@ const DEFAULT_SPLIT = {
 
 const STORAGE_KEY = 'swolebro_program'
 const SESSION_KEY = 'swolebro_active_session'
+const WEEKS_KEY = 'swolebro_weeks'
 
 function loadProgram() {
   try {
@@ -95,6 +96,18 @@ function loadActiveSession() {
     if (saved) return JSON.parse(saved)
   } catch {}
   return null
+}
+
+function loadWeeks() {
+  try {
+    const saved = localStorage.getItem(WEEKS_KEY)
+    if (saved) return JSON.parse(saved)
+  } catch {}
+  return { push_a: WEEK, push_b: WEEK, pull_a: WEEK, pull_b: WEEK }
+}
+
+function saveWeeks(weeks) {
+  localStorage.setItem(WEEKS_KEY, JSON.stringify(weeks))
 }
 
 function saveActiveSession(sessionState) {
@@ -138,7 +151,7 @@ Actions:
 const PROG_SYS = `Expert RP Strength coach. Return next week's targets. Add 5lb compounds OR +1 rep. Nautilus=5lb increments. Cable=4.5lb. Return ONLY valid JSON:
 {"week_number":4,"targets":[{"exercise_id":"<id>","exercise_name":"<n>","set_type":"straight|myo","target_weight":<num>,"target_sets":<int|null>,"target_reps_min":<int>,"target_reps_max":<int>,"target_rir":<int>,"coaching_note":"<or null>"}],"flags":[],"session_summary":"<2 sentences>"}`
 
-function buildProgPrompt(day, logs, exercises) {
+function buildProgPrompt(day, logs, exercises, week) {
   const lines = exercises.map(ex => {
     const sets = logs[ex.id] || []
     if (!sets.length) return `[${ex.id}] ${ex.name}: SKIPPED`
@@ -147,23 +160,34 @@ function buildProgPrompt(day, logs, exercises) {
     const minis = sets.filter(s => s.type === 'mini')
     return `[${ex.id}] ${ex.name}: Act ${act?.w}lb x${act?.reps}, ${minis.length} minis x5`
   })
-  return `${day.label} | Week ${WEEK} Meso ${MESO}\n${lines.join('\n')}\nReturn Week 4 targets. JSON only.`
+  return `${day.label} | Week ${week} Meso ${MESO}\n${lines.join('\n')}\nReturn Week ${week + 1} targets. JSON only.`
 }
 
 async function callClaude(system, messages, maxTokens = 400) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': ANTHROPIC_KEY,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: maxTokens, system, messages })
-  })
-  const data = await res.json()
-  if (data.error) throw new Error(data.error.message)
-  return data.content.filter(b => b.type === 'text').map(b => b.text).join('')
+  const delays = [1000, 3000]
+  for (let attempt = 0; attempt <= delays.length; attempt++) {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: maxTokens, system, messages })
+    })
+    const data = await res.json()
+    if (data.error) {
+      if (data.error.type === 'overloaded_error' && attempt < delays.length) {
+        await new Promise(r => setTimeout(r, delays[attempt]))
+        continue
+      }
+      throw new Error(data.error.type === 'overloaded_error'
+        ? 'The AI is overloaded right now — please try again in a moment.'
+        : data.error.message)
+    }
+    return data.content.filter(b => b.type === 'text').map(b => b.text).join('')
+  }
 }
 
 /* ============================================================
@@ -255,13 +279,13 @@ function PeekModal({ split, currentDayKey, onClose }) {
 /* ============================================================
    HOME SCREEN
    ============================================================ */
-function HomeScreen({ split, onStart, onEdit, activeSession, onResume }) {
+function HomeScreen({ split, onStart, onEdit, activeSession, onResume, weeks }) {
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '36px 20px 40px' }}>
       <div style={{ marginBottom: 40 }}>
         <div style={{ fontSize: 13, color: C.acc, letterSpacing: 4, marginBottom: 10, fontWeight: 'bold' }}>SWOLEBRO TRAINING</div>
-        <div style={{ fontSize: 72, fontWeight: 900, lineHeight: 1, color: C.text }}>WEEK {WEEK}</div>
-        <div style={{ fontSize: 18, color: C.sub, letterSpacing: 2, marginTop: 8 }}>MESOCYCLE {MESO} · RP METHOD</div>
+        <div style={{ fontSize: 72, fontWeight: 900, lineHeight: 1, color: C.text }}>MESO {MESO}</div>
+        <div style={{ fontSize: 18, color: C.sub, letterSpacing: 2, marginTop: 8 }}>RP METHOD</div>
       </div>
 
       {/* Resume active session banner */}
@@ -281,13 +305,14 @@ function HomeScreen({ split, onStart, onEdit, activeSession, onResume }) {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         {Object.values(split).map(d => {
           const isActive = activeSession?.dayKey === d.key
+          const dayWeek = weeks?.[d.key] || WEEK
           return (
             <button key={d.key} onClick={() => onStart(d.key)}
               style={{ background: C.surface, border: `1px solid ${isActive ? C.acc + '44' : C.border}`, borderRadius: 14, padding: '22px 18px', textAlign: 'left', cursor: 'pointer', color: C.text, fontFamily: 'inherit', position: 'relative', overflow: 'hidden' }}>
               {isActive && <div style={{ position: 'absolute', top: 10, right: 12, width: 8, height: 8, borderRadius: '50%', background: C.green }} />}
               <div style={{ fontSize: 24, fontWeight: 800, marginBottom: 4, color: C.text }}>{d.label}</div>
               <div style={{ fontSize: 15, color: C.sub }}>{d.sub}</div>
-              <div style={{ marginTop: 14, fontSize: 13, color: C.muted, fontWeight: 'bold', letterSpacing: 1 }}>{d.exercises.length} EXERCISES</div>
+              <div style={{ marginTop: 14, fontSize: 13, color: C.muted, fontWeight: 'bold', letterSpacing: 1 }}>{d.exercises.length} EXERCISES · WK {dayWeek}</div>
             </button>
           )
         })}
@@ -494,7 +519,7 @@ function EditScreen({ split, onSave, onBack }) {
 /* ============================================================
    SESSION SCREEN — with persistence, peek modal, fixed chat
    ============================================================ */
-function SessionScreen({ dayKey, split, onBack, savedSession, onSessionChange }) {
+function SessionScreen({ dayKey, split, onBack, savedSession, onSessionChange, week, onComplete }) {
   const day = split[dayKey]
   const [tab, setTab] = useState('coach')
   const [exercises, setExercises] = useState(() => savedSession?.exercises ? JSON.parse(JSON.stringify(savedSession.exercises)) : JSON.parse(JSON.stringify(day.exercises)))
@@ -587,11 +612,11 @@ function SessionScreen({ dayKey, split, onBack, savedSession, onSessionChange })
   async function runProg(finalLogs, finalEx) {
     setScreen('processing')
     try {
-      const raw = await callClaude(PROG_SYS, [{ role: 'user', content: buildProgPrompt(day, finalLogs, finalEx) }], 1000)
+      const raw = await callClaude(PROG_SYS, [{ role: 'user', content: buildProgPrompt(day, finalLogs, finalEx, week) }], 1000)
       const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim())
       setResult(parsed); setScreen('results')
-      // Clear saved session on completion
       onSessionChange(null)
+      onComplete(dayKey)
     } catch (e) {
       setResult({ session_summary: `Error: ${e.message}`, targets: [], flags: [] }); setScreen('results')
       onSessionChange(null)
@@ -602,7 +627,7 @@ function SessionScreen({ dayKey, split, onBack, savedSession, onSessionChange })
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 24 }}>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       <div style={{ width: 52, height: 52, borderRadius: '50%', border: `3px solid ${C.border}`, borderTopColor: C.acc, animation: 'spin .8s linear infinite' }} />
-      <div style={{ fontSize: 20, color: C.sub, letterSpacing: 2, fontWeight: 'bold' }}>CALCULATING WEEK {WEEK + 1}...</div>
+      <div style={{ fontSize: 20, color: C.sub, letterSpacing: 2, fontWeight: 'bold' }}>CALCULATING WEEK {week + 1}...</div>
     </div>
   )
 
@@ -763,6 +788,15 @@ export default function App() {
   const [activeSession, setActiveSession] = useState(loadActiveSession)
   const [showNewSessionConfirm, setShowNewSessionConfirm] = useState(false)
   const [pendingDayKey, setPendingDayKey] = useState(null)
+  const [weeks, setWeeks] = useState(loadWeeks)
+
+  function handleWeekComplete(key) {
+    setWeeks(prev => {
+      const next = { ...prev, [key]: (prev[key] || WEEK) + 1 }
+      saveWeeks(next)
+      return next
+    })
+  }
 
   function handleSessionChange(sessionState) {
     setActiveSession(sessionState)
@@ -821,6 +855,7 @@ export default function App() {
           onEdit={() => setScreen('edit')}
           activeSession={activeSession}
           onResume={resumeSession}
+          weeks={weeks}
         />
       )}
       {screen === 'edit' && <EditScreen split={split} onSave={s => { setSplit(s); setScreen('home') }} onBack={() => setScreen('home')} />}
@@ -831,6 +866,8 @@ export default function App() {
           onBack={goHome}
           savedSession={activeSession?.dayKey === dayKey ? activeSession : null}
           onSessionChange={handleSessionChange}
+          week={weeks[dayKey] || WEEK}
+          onComplete={handleWeekComplete}
         />
       )}
     </div>
