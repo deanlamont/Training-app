@@ -443,6 +443,60 @@ function EditScreen({ split, onSave, onBack }) {
   )
 }
 
+// ─── Peek Modal — view another day without leaving session ────────────────────
+function PeekModal({ split, currentDayKey, onClose }) {
+  const days = Object.values(split)
+  const [peekKey, setPeekKey] = useState(() => {
+    const others = days.filter(d => d.key !== currentDayKey)
+    return others[0]?.key ?? days[0].key
+  })
+  const day = split[peekKey]
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 900, display: 'flex', flexDirection: 'column' }}
+      onClick={onClose}>
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)' }} />
+      <div onClick={e => e.stopPropagation()}
+        style={{ position: 'absolute', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 480, background: C.surface, borderRadius: '20px 20px 0 0', display: 'flex', flexDirection: 'column', maxHeight: '80vh' }}>
+        <div style={{ flexShrink: 0, padding: '18px 20px 14px', borderBottom: `0.5px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontSize: 12, color: C.muted, letterSpacing: 2, fontWeight: 'bold' }}>QUICK LOOK</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.muted, fontSize: 22, cursor: 'pointer', lineHeight: 1, padding: '0 4px' }}>×</button>
+        </div>
+        <div style={{ flexShrink: 0, display: 'flex', overflowX: 'auto', padding: '10px 16px 0', gap: 8 }}>
+          {days.map(d => (
+            <button key={d.key} onClick={() => setPeekKey(d.key)}
+              style={{ flexShrink: 0, padding: '7px 14px', borderRadius: 20, border: `1px solid ${peekKey === d.key ? C.acc : C.border}`, background: peekKey === d.key ? C.accLight : 'none', color: peekKey === d.key ? C.acc : C.sub, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+              {d.label}{d.key === currentDayKey ? ' ●' : ''}
+            </button>
+          ))}
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
+          <div style={{ padding: '8px 20px 12px', fontSize: 13, color: C.sub }}>{day.sub}</div>
+          {day.exercises.map((ex, i) => {
+            const target = ex.type === 'straight'
+              ? `${ex.sets}×${ex.min}${ex.max !== ex.min ? '-' + ex.max : ''} @ ${fmt(ex.w)}lb${ex.note ?? ''}`
+              : `Myo-reps @ ${fmt(ex.w)}lb`
+            return (
+              <div key={ex.id} style={{ display: 'flex', alignItems: 'center', padding: '13px 20px', borderBottom: `0.5px solid ${C.border}`, gap: 14 }}>
+                <div style={{ width: 24, height: 24, borderRadius: '50%', border: `1.5px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <span style={{ color: C.muted, fontSize: 12, fontWeight: 'bold' }}>{i + 1}</span>
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: C.text }}>{ex.name}</div>
+                  <div style={{ fontSize: 13, color: C.sub, marginTop: 2 }}>{target}</div>
+                </div>
+                <div style={{ fontSize: 11, color: ex.type === 'myo' ? C.orange : C.blue, letterSpacing: 1, fontWeight: 'bold', flexShrink: 0 }}>
+                  {ex.type === 'myo' ? 'MYO' : 'SETS'}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Session Screen ───────────────────────────────────────────────────────────
 function SessionScreen({
   dayKey, split, onBack, onComplete, currentCycle,
@@ -456,6 +510,7 @@ function SessionScreen({
   const [tab, setTab] = useState('coach')
   const [thinking, setThinking] = useState(false)
   const [input, setInput] = useState('')
+  const [showPeek, setShowPeek] = useState(false)
   const chatRef = useRef(null)
 
   useEffect(() => {
@@ -561,6 +616,7 @@ function SessionScreen({
 
   return (
     <>
+      {showPeek && <PeekModal split={split} currentDayKey={dayKey} onClose={() => setShowPeek(false)} />}
       <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', padding: '14px 18px', borderBottom: `0.5px solid ${C.border}`, gap: 12, background: C.surface }}>
         <button onClick={onBack} aria-label="Back"
           style={{ background: 'none', border: 'none', color: C.sub, fontSize: 28, cursor: 'pointer', padding: '4px 8px', lineHeight: 1 }}>←</button>
@@ -568,6 +624,8 @@ function SessionScreen({
           <div style={{ fontSize: 20, fontWeight: 700, color: C.text, lineHeight: 1.1 }}>{day.label}</div>
           <div style={{ fontSize: 13, color: C.sub, marginTop: 2 }}>{day.sub} · Cycle {currentCycle}</div>
         </div>
+        <button onClick={() => setShowPeek(true)} aria-label="View other days"
+          style={{ background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 8, color: C.muted, fontSize: 11, fontWeight: 'bold', letterSpacing: 1, padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit', marginRight: 4 }}>DAYS</button>
         <div style={{ fontSize: 15, color: C.muted, fontFamily: 'monospace', fontWeight: 'bold' }}>{loggedCount}/{sessionExercises.length}</div>
       </div>
 
@@ -590,7 +648,7 @@ function SessionScreen({
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: C.bg }}>
         {tab === 'coach' ? (
           <>
-            <div ref={chatRef} style={{ flex: 1, overflowY: 'auto', padding: '16px 16px 8px' }}>
+            <div ref={chatRef} style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', padding: '16px 16px 8px' }}>
               {sessionChat.map((m, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: 12 }}>
                   <div style={{
@@ -614,7 +672,6 @@ function SessionScreen({
             <div style={{ padding: '10px 14px 14px', borderTop: `0.5px solid ${C.border}`, display: 'flex', gap: 10, alignItems: 'flex-end', background: C.surface }}>
               <textarea rows={1} value={input} placeholder="Tell me what you did..."
                 onChange={e => { setInput(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px' }}
-                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
                 style={{ flex: 1, background: C.innerBg, border: `0.5px solid ${C.border}`, borderRadius: 12, color: C.text, fontSize: 16, padding: '12px 14px', lineHeight: 1.4, resize: 'none', outline: 'none', overflowY: 'hidden', fontFamily: 'inherit' }}
               />
               <button onClick={send} aria-label="Send"
