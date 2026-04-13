@@ -761,6 +761,7 @@ function SessionScreen({
             <div style={{ padding: '10px 14px 14px', borderTop: `0.5px solid ${C.border}`, display: 'flex', gap: 10, alignItems: 'flex-end', background: C.surface }}>
               <textarea rows={1} value={input} placeholder="Tell me what you did..."
                 onChange={e => { setInput(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px' }}
+                onFocus={() => { setTimeout(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight }, 300) }}
                 style={{ flex: 1, background: C.innerBg, border: `0.5px solid ${C.border}`, borderRadius: 12, color: C.text, fontSize: 16, padding: '12px 14px', lineHeight: 1.4, resize: 'none', outline: 'none', overflowY: 'hidden', fontFamily: 'inherit' }}
               />
               <button onClick={send} aria-label="Send"
@@ -997,7 +998,7 @@ export default function App() {
   }
 
   return (
-    <div style={{ maxWidth: 480, margin: '0 auto', minHeight: '100vh', background: C.bg, display: 'flex', flexDirection: 'column', color: C.text, fontFamily: '-apple-system, Arial, sans-serif' }}>
+    <div style={{ maxWidth: 480, margin: '0 auto', height: '100dvh', background: C.bg, display: 'flex', flexDirection: 'column', color: C.text, fontFamily: '-apple-system, Arial, sans-serif' }}>
       {screen === 'home' && (
         <HomeScreen split={split} progress={progress} history={history} onStart={startSession} onEdit={() => setScreen('edit')}
           hasActiveSession={hasActiveSession} activeSessionKey={dayKey} onResumeSession={() => setScreen('session')} />
