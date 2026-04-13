@@ -1,7 +1,15 @@
 import { useState, useRef, useEffect } from 'react'
+import { supabase } from './utils/supabaseClient'
 
 const MESO = 1
 const ANTHROPIC_KEY = import.meta.env.VITE_ANTHROPIC_KEY
+
+const HISTORY_KEY = 'swolebro_history'
+function loadHistory() {
+  try { const s = localStorage.getItem(HISTORY_KEY); if (s) return JSON.parse(s) } catch {}
+  return []
+}
+function saveHistory(h) { localStorage.setItem(HISTORY_KEY, JSON.stringify(h)) }
 
 const PROGRESS_KEY = 'swolebro_progress'
 const DEFAULT_PROGRESS = {
@@ -213,10 +221,12 @@ async function callClaude(system, messages, maxTokens = 400) {
 }
 
 // ─── Home Screen ──────────────────────────────────────────────────────────────
-function HomeScreen({ split, progress, onStart, onEdit, hasActiveSession, activeSessionKey, onResumeSession }) {
+function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSession, activeSessionKey, onResumeSession }) {
   const days = Object.values(split)
   const mainDays = days.filter(d => d.key !== 'day_5')
   const optDay = days.find(d => d.key === 'day_5')
+  const [expandedIdx, setExpandedIdx] = useState(null)
+  const recentHistory = history.slice(0, 3)
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '36px 20px 40px', background: C.bg }}>
@@ -234,6 +244,33 @@ function HomeScreen({ split, progress, onStart, onEdit, hasActiveSession, active
             {split[activeSessionKey]?.label} — tap to resume →
           </div>
         </button>
+      )}
+
+      {recentHistory.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 12, color: C.muted, letterSpacing: 2, marginBottom: 10, fontWeight: 'bold' }}>RECENT</div>
+          {recentHistory.map((h, i) => {
+            const date = new Date(h.date)
+            const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+            const isExpanded = expandedIdx === i
+            return (
+              <div key={i} onClick={() => setExpandedIdx(isExpanded ? null : i)}
+                style={{ background: C.surface, border: `0.5px solid ${C.border}`, borderRadius: 12, padding: '12px 16px', marginBottom: 8, cursor: h.summary ? 'pointer' : 'default' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: C.text }}>{h.label}</div>
+                  <div style={{ fontSize: 12, color: C.muted }}>{dateStr}</div>
+                </div>
+                <div style={{ display: 'flex', gap: 12, marginTop: 4, alignItems: 'center' }}>
+                  <div style={{ fontSize: 12, color: C.acc, fontWeight: 'bold', letterSpacing: 1 }}>CYCLE {h.week}</div>
+                  {h.summary && <div style={{ fontSize: 12, color: C.muted }}>{isExpanded ? '▲' : '▼ coach note'}</div>}
+                </div>
+                {isExpanded && h.summary && (
+                  <div style={{ fontSize: 13, color: C.sub, marginTop: 8, lineHeight: 1.5, borderTop: `0.5px solid ${C.border}`, paddingTop: 8 }}>{h.summary}</div>
+                )}
+              </div>
+            )
+          })}
+        </div>
       )}
 
       <div style={{ fontSize: 12, color: C.muted, letterSpacing: 2, marginBottom: 12, fontWeight: 'bold' }}>SELECT TODAY'S SESSION</div>
@@ -514,7 +551,31 @@ function SessionScreen({
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false)
   const [pendingLogs, setPendingLogs] = useState(null)
   const [pendingEx, setPendingEx] = useState(null)
+  const [timerEnd, setTimerEnd] = useState(null)
+  const [timerDuration, setTimerDuration] = useState(null)
+  const [timerNow, setTimerNow] = useState(Date.now())
   const chatRef = useRef(null)
+
+  useEffect(() => {
+    const id = setInterval(() => setTimerNow(Date.now()), 250)
+    return () => clearInterval(id)
+  }, [])
+
+  function startTimer(secs) {
+    setTimerDuration(secs)
+    setTimerEnd(Date.now() + secs * 1000)
+  }
+  function cancelTimer() { setTimerEnd(null); setTimerDuration(null) }
+
+  const timerRemaining = timerEnd ? Math.max(0, Math.ceil((timerEnd - timerNow) / 1000)) : null
+  const timerDone = timerEnd && timerRemaining === 0
+
+  useEffect(() => {
+    if (timerDone) {
+      if (navigator.vibrate) navigator.vibrate([200, 100, 200])
+      setTimerEnd(null); setTimerDuration(null)
+    }
+  }, [timerDone])
 
   useEffect(() => {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight
@@ -537,13 +598,17 @@ function SessionScreen({
       const newLogs = { ...sessionLogs }
       const newEx = [...sessionExercises]
       let doComplete = false
+      let didLog = false
       for (const a of (parsed.actions || [])) {
-        if (a.type === 'log_sets' && a.exercise_id)
+        if (a.type === 'log_sets' && a.exercise_id) {
           newLogs[a.exercise_id] = (a.sets || []).map(s => ({ ...s, type: 'straight' }))
+          didLog = true
+        }
         if (a.type === 'log_myo' && a.exercise_id) {
           const la = [{ type: 'act', w: a.activation?.w, reps: a.activation?.reps }]
           for (let i = 0; i < (a.mini_sets ?? 4); i++) la.push({ type: 'mini', num: i + 1, w: a.activation?.w, reps: 5 })
           newLogs[a.exercise_id] = la
+          didLog = true
         }
         if (a.type === 'swap_exercise' && a.from_id) {
           const idx = newEx.findIndex(e => e.id === a.from_id)
@@ -554,6 +619,7 @@ function SessionScreen({
       setSessionLogs(newLogs); setSessionExercises(newEx)
       setSessionChat([...newChat, { role: 'assistant', content: parsed.message }])
       setThinking(false)
+      if (didLog && navigator.vibrate) navigator.vibrate(50)
       if (doComplete) { setPendingLogs(newLogs); setPendingEx(newEx); setShowCompleteConfirm(true) }
     } catch (e) {
       setSessionChat([...newChat, { role: 'assistant', content: `Error: ${e.message}` }])
@@ -706,31 +772,60 @@ function SessionScreen({
             </div>
           </>
         ) : (
-          <div style={{ flex: 1, overflowY: 'auto' }}>
-            {sessionExercises.map((ex, i) => {
-              const logged = (sessionLogs[ex.id] || []).length > 0
-              const target = ex.type === 'straight'
-                ? `${ex.sets}×${ex.min}${ex.max !== ex.min ? '-' + ex.max : ''} @ ${fmt(ex.w)}lb${ex.note ?? ''}`
-                : `Myo-reps @ ${fmt(ex.w)}lb`
-              return (
-                <div key={ex.id} style={{ display: 'flex', alignItems: 'center', padding: '16px 18px', borderBottom: `0.5px solid ${C.border}`, gap: 14, background: logged ? C.innerBg : C.surface, opacity: logged ? 0.7 : 1 }}>
-                  <div style={{ width: 28, height: 28, borderRadius: '50%', border: `1.5px solid ${logged ? C.acc : C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: logged ? C.accLight : 'transparent' }}>
-                    {logged
-                      ? <span style={{ color: C.acc, fontSize: 14, fontWeight: 'bold' }}>✓</span>
-                      : <span style={{ color: C.muted, fontSize: 13, fontWeight: 'bold' }}>{i + 1}</span>
-                    }
+          <>
+            <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
+              {sessionExercises.map((ex, i) => {
+                const logged = (sessionLogs[ex.id] || []).length > 0
+                const target = ex.type === 'straight'
+                  ? `${ex.sets}×${ex.min}${ex.max !== ex.min ? '-' + ex.max : ''} @ ${fmt(ex.w)}lb${ex.note ?? ''}`
+                  : `Myo-reps @ ${fmt(ex.w)}lb`
+                return (
+                  <div key={ex.id} style={{ display: 'flex', alignItems: 'center', padding: '16px 18px', borderBottom: `0.5px solid ${C.border}`, gap: 14, background: logged ? C.innerBg : C.surface, opacity: logged ? 0.7 : 1 }}>
+                    <div style={{ width: 28, height: 28, borderRadius: '50%', border: `1.5px solid ${logged ? C.acc : C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: logged ? C.accLight : 'transparent' }}>
+                      {logged
+                        ? <span style={{ color: C.acc, fontSize: 14, fontWeight: 'bold' }}>✓</span>
+                        : <span style={{ color: C.muted, fontSize: 13, fontWeight: 'bold' }}>{i + 1}</span>
+                      }
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 16, fontWeight: 600, color: C.text, lineHeight: 1.2 }}>{ex.name}</div>
+                      <div style={{ fontSize: 13, color: C.sub, marginTop: 4 }}>{target}</div>
+                    </div>
+                    <div style={{ fontSize: 11, color: ex.type === 'myo' ? C.orange : C.blue, letterSpacing: 1, fontWeight: 'bold', flexShrink: 0 }}>
+                      {ex.type === 'myo' ? 'MYO' : 'SETS'}
+                    </div>
                   </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 16, fontWeight: 600, color: C.text, lineHeight: 1.2 }}>{ex.name}</div>
-                    <div style={{ fontSize: 13, color: C.sub, marginTop: 4 }}>{target}</div>
+                )
+              })}
+            </div>
+            {/* ─── Rest Timer Bar ─── */}
+            <div style={{ flexShrink: 0, borderTop: `0.5px solid ${C.border}`, background: C.surface }}>
+              {timerEnd ? (
+                <div onClick={cancelTimer} style={{ cursor: 'pointer', padding: '12px 18px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <div style={{ fontSize: 13, color: C.muted, fontWeight: 'bold', letterSpacing: 1 }}>REST</div>
+                    <div style={{ fontSize: 26, fontWeight: 800, color: C.acc, fontFamily: 'monospace' }}>
+                      {Math.floor(timerRemaining / 60)}:{String(timerRemaining % 60).padStart(2, '0')}
+                    </div>
+                    <div style={{ fontSize: 11, color: C.muted, letterSpacing: 1 }}>TAP TO CANCEL</div>
                   </div>
-                  <div style={{ fontSize: 11, color: ex.type === 'myo' ? C.orange : C.blue, letterSpacing: 1, fontWeight: 'bold', flexShrink: 0 }}>
-                    {ex.type === 'myo' ? 'MYO' : 'SETS'}
+                  <div style={{ height: 4, background: C.border, borderRadius: 2, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', background: C.acc, borderRadius: 2, transition: 'width 0.25s linear', width: `${(timerRemaining / timerDuration) * 100}%` }} />
                   </div>
                 </div>
-              )
-            })}
-          </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', padding: '10px 18px', gap: 8 }}>
+                  <div style={{ fontSize: 12, color: C.muted, fontWeight: 'bold', letterSpacing: 1, marginRight: 4 }}>REST</div>
+                  {[['60s', 60], ['90s', 90], ['2m', 120]].map(([label, secs]) => (
+                    <button key={label} onClick={() => startTimer(secs)}
+                      style={{ flex: 1, padding: '9px 0', background: C.bg, border: `0.5px solid ${C.border}`, borderRadius: 10, color: C.sub, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
         )}
       </div>
     </>
@@ -742,9 +837,12 @@ export default function App() {
   const [screen, setScreen] = useState('home')
   const [split, setSplit] = useState(loadProgram)
   const [progress, setProgressRaw] = useState(loadProgress)
+  const [history, setHistoryRaw] = useState(loadHistory)
   function setProgress(p) { setProgressRaw(p); saveProgress(p) }
 
   const wakeLockRef = useRef(null)
+  const syncTimerRef = useRef(null)
+  const supabaseUserRef = useRef(null)
   async function acquireWakeLock() {
     try {
       if ('wakeLock' in navigator) {
@@ -763,6 +861,53 @@ export default function App() {
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [screen])
+
+  // ─── Supabase sync ───────────────────────────────────────────────────────────
+  async function getSupabaseUser() {
+    if (!supabase) return null
+    if (supabaseUserRef.current) return supabaseUserRef.current
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.user) { supabaseUserRef.current = session.user; return session.user }
+      const { data } = await supabase.auth.signInAnonymously()
+      supabaseUserRef.current = data.user
+      return data.user
+    } catch { return null }
+  }
+
+  function scheduleSync(p, prog, hist) {
+    if (!supabase) return
+    clearTimeout(syncTimerRef.current)
+    syncTimerRef.current = setTimeout(async () => {
+      const user = await getSupabaseUser()
+      if (!user) return
+      try {
+        await supabase.from('swolebro_sync').upsert({
+          user_id: user.id,
+          program: p,
+          progress: prog,
+          history: hist,
+          updated_at: new Date().toISOString()
+        })
+      } catch {}
+    }, 1000)
+  }
+
+  useEffect(() => {
+    async function initSupabase() {
+      const user = await getSupabaseUser()
+      if (!user) return
+      try {
+        const { data } = await supabase.from('swolebro_sync').select('*').eq('user_id', user.id).single()
+        if (data) {
+          if (data.program) { saveProgram(data.program); setSplit(data.program) }
+          if (data.progress) { saveProgress(data.progress); setProgressRaw(data.progress) }
+          if (data.history) { saveHistory(data.history); setHistoryRaw(data.history) }
+        }
+      } catch {}
+    }
+    initSupabase()
+  }, [])
 
   const savedSession = loadSessionState()
   const [dayKey, setDayKey]                       = useState(savedSession?.dayKey ?? null)
@@ -805,6 +950,8 @@ export default function App() {
   }
 
   function completeSession() {
+    let finalSplit = split
+    let finalProgress = progress
     if (dayKey && sessionResult?.targets?.length > 0) {
       const nextCycle = sessionResult.next_cycle ?? (currentCycle + 1)
       const updatedSplit = JSON.parse(JSON.stringify(split))
@@ -821,9 +968,23 @@ export default function App() {
       }
       saveProgram(updatedSplit)
       setSplit(updatedSplit)
+      finalSplit = updatedSplit
       const updatedProgress = { ...progress, [dayKey]: { week: nextCycle } }
-      setProgress(updatedProgress)
+      saveProgress(updatedProgress)
+      setProgressRaw(updatedProgress)
+      finalProgress = updatedProgress
     }
+    const newEntry = {
+      date: new Date().toISOString(),
+      dayKey,
+      label: split[dayKey]?.label ?? dayKey,
+      week: currentCycle,
+      summary: sessionResult?.session_summary ?? null
+    }
+    const updatedHistory = [newEntry, ...history].slice(0, 20)
+    saveHistory(updatedHistory)
+    setHistoryRaw(updatedHistory)
+    scheduleSync(finalSplit, finalProgress, updatedHistory)
     releaseWakeLock()
     clearSessionState()
     setDayKey(null)
@@ -838,11 +999,11 @@ export default function App() {
   return (
     <div style={{ maxWidth: 480, margin: '0 auto', minHeight: '100vh', background: C.bg, display: 'flex', flexDirection: 'column', color: C.text, fontFamily: '-apple-system, Arial, sans-serif' }}>
       {screen === 'home' && (
-        <HomeScreen split={split} progress={progress} onStart={startSession} onEdit={() => setScreen('edit')}
+        <HomeScreen split={split} progress={progress} history={history} onStart={startSession} onEdit={() => setScreen('edit')}
           hasActiveSession={hasActiveSession} activeSessionKey={dayKey} onResumeSession={() => setScreen('session')} />
       )}
       {screen === 'edit' && (
-        <EditScreen split={split} onSave={s => { setSplit(s); setScreen('home') }} onBack={() => setScreen('home')} />
+        <EditScreen split={split} onSave={s => { setSplit(s); scheduleSync(s, progress, history); setScreen('home') }} onBack={() => setScreen('home')} />
       )}
       {screen === 'session' && dayKey && (
         <SessionScreen
