@@ -511,6 +511,9 @@ function SessionScreen({
   const [thinking, setThinking] = useState(false)
   const [input, setInput] = useState('')
   const [showPeek, setShowPeek] = useState(false)
+  const [showCompleteConfirm, setShowCompleteConfirm] = useState(false)
+  const [pendingLogs, setPendingLogs] = useState(null)
+  const [pendingEx, setPendingEx] = useState(null)
   const chatRef = useRef(null)
 
   useEffect(() => {
@@ -551,7 +554,7 @@ function SessionScreen({
       setSessionLogs(newLogs); setSessionExercises(newEx)
       setSessionChat([...newChat, { role: 'assistant', content: parsed.message }])
       setThinking(false)
-      if (doComplete) setTimeout(() => runProg(newLogs, newEx), 600)
+      if (doComplete) { setPendingLogs(newLogs); setPendingEx(newEx); setShowCompleteConfirm(true) }
     } catch (e) {
       setSessionChat([...newChat, { role: 'assistant', content: `Error: ${e.message}` }])
       setThinking(false)
@@ -617,6 +620,26 @@ function SessionScreen({
   return (
     <>
       {showPeek && <PeekModal split={split} currentDayKey={dayKey} onClose={() => setShowPeek(false)} />}
+      {showCompleteConfirm && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }} onClick={() => setShowCompleteConfirm(false)} />
+          <div onClick={e => e.stopPropagation()}
+            style={{ position: 'relative', background: C.surface, borderRadius: 20, padding: '28px 24px', width: '100%', maxWidth: 360, border: `0.5px solid ${C.border}` }}>
+            <div style={{ fontSize: 22, fontWeight: 800, color: C.text, marginBottom: 8 }}>Session complete?</div>
+            <div style={{ fontSize: 15, color: C.sub, lineHeight: 1.5, marginBottom: 24 }}>This will calculate your next session's targets.</div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setShowCompleteConfirm(false)}
+                style={{ flex: 1, padding: '14px 0', background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 12, color: C.sub, fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                KEEP GOING
+              </button>
+              <button onClick={() => { setShowCompleteConfirm(false); runProg(pendingLogs, pendingEx) }}
+                style={{ flex: 1, padding: '14px 0', background: C.acc, border: 'none', borderRadius: 12, color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                YES, DONE
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', padding: '14px 18px', borderBottom: `0.5px solid ${C.border}`, gap: 12, background: C.surface }}>
         <button onClick={onBack} aria-label="Back"
           style={{ background: 'none', border: 'none', color: C.sub, fontSize: 28, cursor: 'pointer', padding: '4px 8px', lineHeight: 1 }}>←</button>
@@ -721,6 +744,26 @@ export default function App() {
   const [progress, setProgressRaw] = useState(loadProgress)
   function setProgress(p) { setProgressRaw(p); saveProgress(p) }
 
+  const wakeLockRef = useRef(null)
+  async function acquireWakeLock() {
+    try {
+      if ('wakeLock' in navigator) {
+        wakeLockRef.current = await navigator.wakeLock.request('screen')
+      }
+    } catch {}
+  }
+  function releaseWakeLock() {
+    wakeLockRef.current?.release()
+    wakeLockRef.current = null
+  }
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState === 'visible' && screen === 'session') acquireWakeLock()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [screen])
+
   const savedSession = loadSessionState()
   const [dayKey, setDayKey]                       = useState(savedSession?.dayKey ?? null)
   const [sessionLogs, setSessionLogsRaw]           = useState(savedSession?.logs ?? {})
@@ -758,6 +801,7 @@ export default function App() {
     setSessionResultRaw(null)
     saveSessionState({ dayKey: key, logs: {}, chat: freshChat, exercises: freshExercises, sessionScreen: 'session', result: null })
     setScreen('session')
+    acquireWakeLock()
   }
 
   function completeSession() {
@@ -780,6 +824,7 @@ export default function App() {
       const updatedProgress = { ...progress, [dayKey]: { week: nextCycle } }
       setProgress(updatedProgress)
     }
+    releaseWakeLock()
     clearSessionState()
     setDayKey(null)
     setSessionLogsRaw({})
@@ -801,7 +846,7 @@ export default function App() {
       )}
       {screen === 'session' && dayKey && (
         <SessionScreen
-          dayKey={dayKey} split={split} onBack={() => setScreen('home')} onComplete={completeSession}
+          dayKey={dayKey} split={split} onBack={() => { releaseWakeLock(); setScreen('home') }} onComplete={completeSession}
           currentCycle={currentCycle}
           sessionLogs={sessionLogs}           setSessionLogs={setSessionLogs}
           sessionChat={sessionChat}           setSessionChat={setSessionChat}
