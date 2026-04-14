@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { supabase } from './utils/supabaseClient'
+import { migrateToSupabase } from './utils/migrateToSupabase'
+import { loadProgramFromSupabase, saveSessionTargets } from './utils/loadProgramFromSupabase'
 
 const MESO = 1
 const ANTHROPIC_KEY = import.meta.env.VITE_ANTHROPIC_KEY
@@ -43,7 +45,7 @@ const C = {
 
 const DEFAULT_SPLIT = {
   push_a: {
-    key: 'push_a', label: 'Push A', sub: 'Chest & Triceps',
+    key: 'push_a', label: 'Push A', sub: 'Chest, Triceps & Legs',
     exercises: [
       { id: 'nb_inc',     name: 'Nautilus PL Incline Bench',       type: 'straight', sets: 4, min: 8,  max: 8,  w: 55,   note: '/side' },
       { id: 'nb_flat',    name: 'Nautilus PL Flat Bench',          type: 'straight', sets: 3, min: 10, max: 10, w: 80,   note: '/side' },
@@ -51,11 +53,13 @@ const DEFAULT_SPLIT = {
       { id: 'lat_r_a',    name: 'Arsenal Lateral Raises',          type: 'myo',      w: 35 },
       { id: 'tri_rope_a', name: 'Cable Rope Overhead Extension',   type: 'straight', sets: 3, min: 12, max: 12, w: null },
       { id: 'tri_push_a', name: 'Tricep Pushdowns',                type: 'myo',      w: 54 },
+      { id: 'leg_pr_a',   name: 'Nautilus Xpload Leg Press',        type: 'straight', sets: 3, min: 10, max: 10, w: 135,  note: '/side' },
+      { id: 'leg_ext_a',  name: 'Nautilus Leg Extensions',         type: 'myo',      w: 100 },
       { id: 'pallof',     name: 'Pallof Press',                    type: 'straight', sets: 2, min: 12, max: 12, w: null, note: '/side' },
     ]
   },
   push_b: {
-    key: 'push_b', label: 'Push B', sub: 'Shoulders & Chest',
+    key: 'push_b', label: 'Push B', sub: 'Shoulders, Chest & Legs',
     exercises: [
       { id: 'ohp',        name: 'Standing Barbell OHP',            type: 'straight', sets: 4, min: 8,  max: 8,  w: null },
       { id: 'seat_pr',    name: 'Nautilus PL Seated Press',        type: 'straight', sets: 3, min: 10, max: 10, w: 55,   note: '/side' },
@@ -63,37 +67,35 @@ const DEFAULT_SPLIT = {
       { id: 'landmine',   name: 'Landmine Press',                  type: 'straight', sets: 3, min: 10, max: 12, w: null },
       { id: 'fly_b',      name: 'Arsenal Fly Machine',             type: 'myo',      w: 25 },
       { id: 'tri_rope_b', name: 'Cable Rope Overhead Extension',   type: 'myo',      w: null },
-      { id: 'tri_over',   name: 'Tricep Overhead Ext',             type: 'straight', sets: 3, min: 12, max: 12, w: 44 },
+      { id: 'tri_over',   name: 'Tricep Overhead Extension',        type: 'straight', sets: 3, min: 12, max: 12, w: 44 },
+      { id: 'leg_pr_b',   name: 'Nautilus Xpload Leg Press',        type: 'straight', sets: 3, min: 10, max: 10, w: 75,   note: '/side' },
+      { id: 'leg_ext_b',  name: 'Nautilus Leg Extensions',         type: 'myo',      w: 120 },
       { id: 'woodchop',   name: 'Cable Woodchop',                  type: 'straight', sets: 2, min: 12, max: 12, w: null, note: '/side' },
     ]
   },
   pull_a: {
-    key: 'pull_a', label: 'Pull A', sub: 'Back Width · Biceps · Legs',
+    key: 'pull_a', label: 'Pull A', sub: 'Back Width · Biceps · Hamstrings',
     exercises: [
       { id: 'lat_pr',     name: 'Cable Lat Prayers',               type: 'myo',      w: 58.5 },
-      { id: 'row_mid',    name: 'CS Row Mid',                      type: 'straight', sets: 3, min: 10, max: 12, w: 140 },
+      { id: 'row_mid',    name: 'Nautilus Chest Supported Row Mid', type: 'straight', sets: 3, min: 10, max: 12, w: 140 },
       { id: 'fp_a',       name: 'Cable Face Pulls',                type: 'myo',      w: 58.5 },
       { id: 'cc_a',       name: 'Cable Curls',                     type: 'myo',      w: 43 },
       { id: 'hammer_a',   name: 'Hammer Curls',                    type: 'straight', sets: 3, min: 12, max: 12, w: null },
       { id: 'rdl',        name: 'Romanian Deadlift',               type: 'straight', sets: 3, min: 8,  max: 8,  w: 135 },
       { id: 'ham_a',      name: 'Nautilus Hamstring Curls',        type: 'myo',      w: 80 },
-      { id: 'leg_pr_a',   name: 'Leg Press',                       type: 'straight', sets: 3, min: 10, max: 10, w: 135,  note: '/side' },
-      { id: 'leg_ext_a',  name: 'Nautilus Leg Extensions',         type: 'myo',      w: 100 },
       { id: 'ab_wheel_a', name: 'Ab Wheel Rollout',                type: 'straight', sets: 2, min: 10, max: 10, w: null },
     ]
   },
   pull_b: {
-    key: 'pull_b', label: 'Pull B', sub: 'Biceps · Upper Back · Legs',
+    key: 'pull_b', label: 'Pull B', sub: 'Biceps · Upper Back · Hamstrings',
     exercises: [
-      { id: 'pd_under',   name: 'Lat Pulldown Underhand',          type: 'straight', sets: 4, min: 8,  max: 12, w: null },
-      { id: 'row_high',   name: 'CS Row High',                     type: 'straight', sets: 3, min: 10, max: 15, w: null },
+      { id: 'pd_under',   name: 'Nautilus Lat Pulldown underhand',  type: 'straight', sets: 4, min: 8,  max: 12, w: null },
+      { id: 'row_high',   name: 'Nautilus Chest Supported Row High',type: 'straight', sets: 3, min: 10, max: 15, w: null },
       { id: 'fp_b',       name: 'Cable Face Pulls',                type: 'myo',      w: null },
       { id: 'rd_b',       name: 'Cable Rear Delt Fly',             type: 'myo',      w: null },
       { id: 'inc_curl',   name: 'Incline DB Curls',                type: 'myo',      w: null },
       { id: 'cc_b',       name: 'Cable Curls',                     type: 'straight', sets: 3, min: 12, max: 12, w: 38.5 },
       { id: 'ham_b',      name: 'Nautilus Hamstring Curls',        type: 'myo',      w: null },
-      { id: 'leg_pr_b',   name: 'Leg Press',                       type: 'straight', sets: 3, min: 10, max: 10, w: 75,   note: '/side' },
-      { id: 'leg_ext_b',  name: 'Nautilus Leg Extensions',         type: 'myo',      w: 120 },
       { id: 'hip_ab_b',   name: 'Hip Abductor Machine',            type: 'straight', sets: 3, min: 15, max: 15, w: null },
       { id: 'leg_raise',  name: 'Hanging Leg Raise',               type: 'straight', sets: 2, min: 12, max: 12, w: null },
     ]
@@ -876,7 +878,7 @@ export default function App() {
     } catch { return null }
   }
 
-  function scheduleSync(p, prog, hist) {
+  function scheduleSync(hist) {
     if (!supabase) return
     clearTimeout(syncTimerRef.current)
     syncTimerRef.current = setTimeout(async () => {
@@ -885,8 +887,6 @@ export default function App() {
       try {
         await supabase.from('swolebro_sync').upsert({
           user_id: user.id,
-          program: p,
-          progress: prog,
           history: hist,
           updated_at: new Date().toISOString()
         })
@@ -899,13 +899,22 @@ export default function App() {
       const user = await getSupabaseUser()
       if (!user) return
       try {
-        const { data } = await supabase.from('swolebro_sync').select('*').eq('user_id', user.id).single()
-        if (data) {
-          if (data.program) { saveProgram(data.program); setSplit(data.program) }
-          if (data.progress) { saveProgress(data.progress); setProgressRaw(data.progress) }
-          if (data.history) { saveHistory(data.history); setHistoryRaw(data.history) }
+        // One-time migration: push localStorage data into normalized Supabase tables
+        if (!localStorage.getItem('supabase_migrated')) {
+          await migrateToSupabase(user.id, split, progress)
+          localStorage.setItem('supabase_migrated', 'true')
         }
-      } catch {}
+        // Load program from Supabase (source of truth)
+        const result = await loadProgramFromSupabase(user.id)
+        if (result?.program) {
+          setSplit(result.program)
+          setProgressRaw(result.progress)
+          saveProgress(result.progress)
+        }
+      } catch (e) {
+        console.error('[supabase init]', e)
+        // localStorage-loaded split/progress remain as fallback
+      }
     }
     initSupabase()
   }, [])
@@ -950,14 +959,15 @@ export default function App() {
     acquireWakeLock()
   }
 
-  function completeSession() {
+  async function completeSession() {
     let finalSplit = split
     let finalProgress = progress
     if (dayKey && sessionResult?.targets?.length > 0) {
       const nextCycle = sessionResult.next_cycle ?? (currentCycle + 1)
       const updatedSplit = JSON.parse(JSON.stringify(split))
+      const dayExercises = updatedSplit[dayKey]?.exercises ?? []
       for (const target of sessionResult.targets) {
-        const ex = updatedSplit[dayKey]?.exercises.find(
+        const ex = dayExercises.find(
           e => e.id === target.exercise_id || e.name === target.exercise_name
         )
         if (ex) {
@@ -967,13 +977,22 @@ export default function App() {
           if (target.target_reps_max != null) ex.max  = target.target_reps_max
         }
       }
-      saveProgram(updatedSplit)
       setSplit(updatedSplit)
       finalSplit = updatedSplit
       const updatedProgress = { ...progress, [dayKey]: { week: nextCycle } }
       saveProgress(updatedProgress)
       setProgressRaw(updatedProgress)
       finalProgress = updatedProgress
+
+      // Write new targets to Supabase
+      const user = supabaseUserRef.current
+      if (user) {
+        const splitDayId = split[dayKey]?._split_day_id
+        await saveSessionTargets(
+          user.id, dayKey, splitDayId,
+          sessionResult.targets, dayExercises, nextCycle
+        ).catch(e => console.error('[saveSessionTargets]', e))
+      }
     }
     const newEntry = {
       date: new Date().toISOString(),
@@ -985,7 +1004,7 @@ export default function App() {
     const updatedHistory = [newEntry, ...history].slice(0, 20)
     saveHistory(updatedHistory)
     setHistoryRaw(updatedHistory)
-    scheduleSync(finalSplit, finalProgress, updatedHistory)
+    scheduleSync(updatedHistory)
     releaseWakeLock()
     clearSessionState()
     setDayKey(null)
@@ -1004,7 +1023,14 @@ export default function App() {
           hasActiveSession={hasActiveSession} activeSessionKey={dayKey} onResumeSession={() => setScreen('session')} />
       )}
       {screen === 'edit' && (
-        <EditScreen split={split} onSave={s => { setSplit(s); scheduleSync(s, progress, history); setScreen('home') }} onBack={() => setScreen('home')} />
+        <EditScreen split={split} onSave={async s => {
+          setSplit(s)
+          setScreen('home')
+          const user = supabaseUserRef.current
+          if (user) {
+            migrateToSupabase(user.id, s, progress).catch(e => console.error('[EditScreen sync]', e))
+          }
+        }} onBack={() => setScreen('home')} />
       )}
       {screen === 'session' && dayKey && (
         <SessionScreen

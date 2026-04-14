@@ -41,7 +41,25 @@ insert into exercises (name, equipment_category, muscle_group, movement_type, we
   ('Nautilus Leg Extensions',         'nautilus_stack', 'quads',      'isolation', 5),
   ('Nautilus Xpload Leg Press',       'nautilus_pl',    'quads',      'compound',  5),
   -- Hamstrings
-  ('Nautilus Hamstring Curls',        'nautilus_stack', 'hamstrings', 'isolation', 5)
+  ('Nautilus Hamstring Curls',        'nautilus_stack', 'hamstrings', 'isolation', 5),
+  -- Glutes / Abductors
+  ('Hip Abductor Machine',            'nautilus_stack', 'glutes',     'isolation', 5),
+  -- Triceps (additional)
+  ('Cable Rope Overhead Extension',   'cable',          'triceps',    'isolation', 4.5),
+  -- Shoulders (additional)
+  ('Standing Barbell OHP',            'free_weight',    'shoulders',  'compound',  5),
+  ('Landmine Press',                  'specialty',      'shoulders',  'compound',  5),
+  -- Biceps (additional)
+  ('Hammer Curls',                    'free_weight',    'biceps',     'isolation', 5),
+  ('EZ Bar Curls',                    'free_weight',    'biceps',     'isolation', 5),
+  -- Rear Delt (additional)
+  ('Cable Rear Delt Fly',             'cable',          'rear_delt',  'isolation', 4.5),
+  -- Core
+  ('Pallof Press',                    'cable',          'core',       'isolation', 4.5),
+  ('Cable Woodchop',                  'cable',          'core',       'isolation', 4.5),
+  ('Ab Wheel Rollout',                'specialty',      'core',       'isolation', 5),
+  ('Hanging Leg Raise',               'specialty',      'core',       'isolation', 5),
+  ('Cable Serratus Punch',            'cable',          'core',       'isolation', 4.5)
 on conflict (name) do nothing;
 
 -- ============================================================

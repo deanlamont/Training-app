@@ -5,15 +5,8 @@
 -- Enable UUID extension
 create extension if not exists "uuid-ossp";
 
--- ============================================================
--- USERS
--- ============================================================
-create table if not exists users (
-  id uuid primary key default uuid_generate_v4(),
-  email text unique not null,
-  display_name text,
-  created_at timestamptz default now()
-);
+-- NOTE: No custom users table — Supabase auth.users handles identity.
+-- All user_id columns reference auth.users(id) directly.
 
 -- ============================================================
 -- EXERCISES
@@ -34,10 +27,12 @@ create table if not exists exercises (
 -- ============================================================
 create table if not exists split_days (
   id uuid primary key default uuid_generate_v4(),
-  user_id uuid references users(id) on delete cascade,
-  day_key text not null,   -- 'push_a' | 'push_b' | 'pull_a' | 'pull_b'
-  day_label text not null, -- 'Push A — Chest & Triceps' etc.
+  user_id uuid references auth.users(id) on delete cascade,
+  day_key text not null,       -- 'push_a' | 'push_b' | 'pull_a' | 'pull_b'
+  day_label text not null,     -- 'Push A' etc.
+  subtitle text,               -- 'Chest, Triceps & Legs' etc.
   sort_order int not null,
+  current_week int not null default 3,  -- tracks progression cycle per day
   created_at timestamptz default now(),
   unique(user_id, day_key)
 );
@@ -54,6 +49,8 @@ create table if not exists split_day_exercises (
   target_reps_min int,
   target_reps_max int,
   sort_order int not null,
+  note text,                        -- e.g. '/side' for unilateral exercises
+  short_id text,                    -- short app-level key e.g. 'nb_inc' (used by coach)
   created_at timestamptz default now()
 );
 
@@ -62,7 +59,7 @@ create table if not exists split_day_exercises (
 -- ============================================================
 create table if not exists sessions (
   id uuid primary key default uuid_generate_v4(),
-  user_id uuid references users(id) on delete cascade,
+  user_id uuid references auth.users(id) on delete cascade,
   split_day_id uuid references split_days(id),
   week_number int not null,
   mesocycle int not null default 1,
@@ -94,7 +91,7 @@ create table if not exists set_logs (
 -- ============================================================
 create table if not exists progression_targets (
   id uuid primary key default uuid_generate_v4(),
-  user_id uuid references users(id) on delete cascade,
+  user_id uuid references auth.users(id) on delete cascade,
   exercise_id uuid references exercises(id),
   split_day_id uuid references split_days(id),
   week_number int not null,
@@ -115,7 +112,7 @@ create table if not exists progression_targets (
 -- ============================================================
 create table if not exists flags (
   id uuid primary key default uuid_generate_v4(),
-  user_id uuid references users(id) on delete cascade,
+  user_id uuid references auth.users(id) on delete cascade,
   exercise_id uuid references exercises(id),
   flag_type text not null,  -- 'plateau' | 'stale' | 'injury' | 'deload'
   flag_message text,
@@ -173,3 +170,13 @@ create policy "set_logs_own" on set_logs for all using (
 -- Exercises table is public read
 alter table exercises enable row level security;
 create policy "exercises_public_read" on exercises for select using (true);
+
+-- ============================================================
+-- MIGRATIONS  (run these in the Supabase SQL editor if schema
+-- was already applied without these columns)
+-- ============================================================
+-- alter table users alter column email drop not null;
+-- alter table split_days add column if not exists subtitle text;
+-- alter table split_days add column if not exists current_week int not null default 3;
+-- alter table split_day_exercises add column if not exists note text;
+-- alter table split_day_exercises add column if not exists short_id text;
