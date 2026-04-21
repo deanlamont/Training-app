@@ -40,6 +40,7 @@ insert into exercises (name, equipment_category, muscle_group, movement_type, we
   ('Hack Squat',                      'specialty',      'quads',      'compound',  5),
   ('Nautilus Leg Extensions',         'nautilus_stack', 'quads',      'isolation', 5),
   ('Nautilus Xpload Leg Press',       'nautilus_pl',    'quads',      'compound',  5),
+  ('Bodybuilder Squat Machine',       'specialty',      'quads',      'compound',  5),
   -- Hamstrings
   ('Nautilus Hamstring Curls',        'nautilus_stack', 'hamstrings', 'isolation', 5),
   -- Glutes / Abductors

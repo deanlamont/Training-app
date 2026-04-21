@@ -12,7 +12,10 @@ function loadHistory() {
   try { const s = localStorage.getItem(HISTORY_KEY); if (s) return JSON.parse(s) } catch {}
   return []
 }
-function saveHistory(h) { localStorage.setItem(HISTORY_KEY, JSON.stringify(h)) }
+function saveHistory(h) {
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(h)) }
+  catch (e) { console.error('[saveHistory] localStorage write failed', e) }
+}
 
 const PROGRESS_KEY = 'swolebro_progress'
 const DEFAULT_PROGRESS = {
@@ -26,7 +29,10 @@ function loadProgress() {
   try { const s = localStorage.getItem(PROGRESS_KEY); if (s) return JSON.parse(s) } catch {}
   return { ...DEFAULT_PROGRESS }
 }
-function saveProgress(p) { localStorage.setItem(PROGRESS_KEY, JSON.stringify(p)) }
+function saveProgress(p) {
+  try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(p)) }
+  catch (e) { console.error('[saveProgress] localStorage write failed', e) }
+}
 
 // ─── Cream / white theme ─────────────────────────────────────────────────────
 const C = {
@@ -69,7 +75,7 @@ const DEFAULT_SPLIT = {
       { id: 'pb_fly',      name: 'Arsenal Fly Machine',            type: 'myo',      w: 30 },
       { id: 'pb_lat_r',    name: 'Arsenal Lateral Raises',         type: 'myo',      w: 30 },
       { id: 'pb_rope_oh',  name: 'Cable Rope Overhead Extension',  type: 'myo',      w: 45 },
-      { id: 'pb_leg_pr',   name: 'Nautilus Xpload Leg Press',      type: 'straight', sets: 3, min: 10, max: 10, w: 135,  note: '/side' },
+      { id: 'pb_squat',    name: 'Bodybuilder Squat Machine',      type: 'straight', sets: 3, min: 8,  max: 10, w: 90,   note: '/side' },
       { id: 'pb_leg_ext',  name: 'Nautilus Leg Extensions',        type: 'myo',      w: 120 },
       { id: 'pb_woodchop', name: 'Cable Woodchop',                 type: 'straight', sets: 2, min: 12, max: 12, w: null, note: '/side' },
     ]
@@ -123,13 +129,25 @@ function loadProgram() {
   try { const s = localStorage.getItem(PROGRAM_KEY); if (s) return JSON.parse(s) } catch {}
   return JSON.parse(JSON.stringify(DEFAULT_SPLIT))
 }
-function saveProgram(split) { localStorage.setItem(PROGRAM_KEY, JSON.stringify(split)) }
+function saveProgram(split) {
+  try { localStorage.setItem(PROGRAM_KEY, JSON.stringify(split)) }
+  catch (e) { console.error('[saveProgram] localStorage write failed', e) }
+}
 function loadSessionState() {
-  try { const s = localStorage.getItem(SESSION_KEY); if (s) return JSON.parse(s) } catch {}
+  try { const s = localStorage.getItem(SESSION_KEY); if (s) return JSON.parse(s) }
+  catch (e) {
+    console.error('[loadSessionState] Corrupted session data, clearing', e)
+    try { localStorage.removeItem(SESSION_KEY) } catch {}
+  }
   return null
 }
-function saveSessionState(state) { localStorage.setItem(SESSION_KEY, JSON.stringify(state)) }
-function clearSessionState() { localStorage.removeItem(SESSION_KEY) }
+function saveSessionState(state) {
+  try { localStorage.setItem(SESSION_KEY, JSON.stringify(state)) }
+  catch (e) { console.error('[saveSessionState] localStorage write failed', e) }
+}
+function clearSessionState() {
+  try { localStorage.removeItem(SESSION_KEY) } catch {}
+}
 
 function fmt(n) {
   if (n == null) return 'TBD'
@@ -593,7 +611,13 @@ function SessionScreen({
       const raw = await callClaude(buildCoachSys(day, sessionLogs, sessionExercises, currentCycle), msgs)
       let parsed
       try { parsed = JSON.parse(raw.replace(/```json|```/g, '').trim()) }
-      catch { parsed = { message: raw, actions: [] } }
+      catch (e) {
+        console.error('[send] JSON parse failed', e, raw)
+        parsed = {
+          message: "⚠️ I couldn't parse the coach response as JSON — your last message wasn't logged. Try rephrasing (e.g. \"log 3 sets of 10 at 100lbs\").",
+          actions: [],
+        }
+      }
       const newLogs = { ...sessionLogs }
       const newEx = [...sessionExercises]
       let doComplete = false
@@ -991,14 +1015,20 @@ export default function App() {
       setProgressRaw(updatedProgress)
       finalProgress = updatedProgress
 
-      // Write new targets to Supabase
+      // Write new targets to Supabase — block completion if it fails so data isn't lost
       const user = supabaseUserRef.current
       if (user) {
         const splitDayId = split[dayKey]?._split_day_id
-        await saveSessionTargets(
-          user.id, dayKey, splitDayId,
-          sessionResult.targets, dayExercises, nextCycle
-        ).catch(e => console.error('[saveSessionTargets]', e))
+        try {
+          await saveSessionTargets(
+            user.id, dayKey, splitDayId,
+            sessionResult.targets, dayExercises, nextCycle
+          )
+        } catch (e) {
+          console.error('[saveSessionTargets]', e)
+          alert(`Couldn't save your progress to the cloud: ${e.message}\n\nYour session data is still here. Check your connection and try again.`)
+          return
+        }
       }
     }
     const newEntry = {

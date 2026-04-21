@@ -44,7 +44,7 @@ export async function seedUserData(userId) {
     { day: 'push_b', ex: 'Arsenal Fly Machine',             sid: 'pb_fly',      type: 'myo',      sets: null, min: 12, max: 15, order: 4 },
     { day: 'push_b', ex: 'Arsenal Lateral Raises',          sid: 'pb_lat_r',    type: 'myo',      sets: null, min: 12, max: 15, order: 5 },
     { day: 'push_b', ex: 'Cable Rope Overhead Extension',   sid: 'pb_rope_oh',  type: 'myo',      sets: null, min: 12, max: 15, order: 6 },
-    { day: 'push_b', ex: 'Nautilus Xpload Leg Press',       sid: 'pb_leg_pr',   type: 'straight', sets: 3, min: 10, max: 10, order: 7,  note: '/side' },
+    { day: 'push_b', ex: 'Bodybuilder Squat Machine',       sid: 'pb_squat',    type: 'straight', sets: 3, min: 8,  max: 10, order: 7,  note: '/side' },
     { day: 'push_b', ex: 'Nautilus Leg Extensions',         sid: 'pb_leg_ext',  type: 'myo',      sets: null, min: 12, max: 15, order: 8 },
     { day: 'push_b', ex: 'Cable Woodchop',                  sid: 'pb_woodchop', type: 'straight', sets: 2, min: 12, max: 12, order: 9,  note: '/side' },
 
@@ -118,7 +118,7 @@ export async function seedUserData(userId) {
     { day: 'push_b', ex: 'Arsenal Fly Machine',            w: 30,   sets: null, min: 12, max: 15, rir: 1, type: 'myo' },
     { day: 'push_b', ex: 'Arsenal Lateral Raises',         w: 30,   sets: null, min: 12, max: 15, rir: 1, type: 'myo' },
     { day: 'push_b', ex: 'Cable Rope Overhead Extension',  w: 45,   sets: null, min: 12, max: 15, rir: 1, type: 'myo' },
-    { day: 'push_b', ex: 'Nautilus Xpload Leg Press',      w: 135,  sets: 3, min: 10, max: 10, rir: 2, type: 'straight' },
+    { day: 'push_b', ex: 'Bodybuilder Squat Machine',      w: 90,   sets: 3, min: 8,  max: 10, rir: 2, type: 'straight' },
     { day: 'push_b', ex: 'Nautilus Leg Extensions',        w: 120,  sets: null, min: 12, max: 15, rir: 1, type: 'myo' },
 
     // PULL A

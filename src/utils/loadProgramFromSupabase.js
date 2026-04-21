@@ -116,13 +116,15 @@ export async function saveSessionTargets(userId, dayKey, splitDayId, targets, ex
     .filter(Boolean)
 
   if (targetRows.length) {
-    await supabase.from('progression_targets').upsert(targetRows, {
+    const { error: upErr } = await supabase.from('progression_targets').upsert(targetRows, {
       onConflict: 'user_id,exercise_id,split_day_id,week_number,mesocycle',
     })
+    if (upErr) throw new Error(`Target upsert failed: ${upErr.message}`)
   }
 
-  await supabase
+  const { error: wkErr } = await supabase
     .from('split_days')
     .update({ current_week: nextCycle })
     .eq('id', splitDayId)
+  if (wkErr) throw new Error(`Cycle bump failed: ${wkErr.message}`)
 }
