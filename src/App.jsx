@@ -591,8 +591,8 @@ function SessionScreen({
     const newChat = [...sessionChat, { role: 'user', content: text }]
     setSessionChat(newChat); setThinking(true); setInput('')
     try {
-      const firstUser = newChat.findIndex(m => m.role === 'user')
-      const msgs = newChat.slice(firstUser).map(m => ({ role: m.role, content: m.content }))
+      const allMsgs = newChat.filter(m => m.role === 'user' || m.role === 'assistant')
+      const msgs = allMsgs.slice(-8).map(m => ({ role: m.role, content: m.content }))
       const raw = await callClaude(buildCoachSys(day, sessionLogs, sessionExercises, currentCycle), msgs)
       let parsed
       try { parsed = JSON.parse(raw.replace(/```json|```/g, '').trim()) }
