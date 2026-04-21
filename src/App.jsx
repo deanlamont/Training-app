@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { supabase } from './utils/supabaseClient'
 import { migrateToSupabase } from './utils/migrateToSupabase'
 import { loadProgramFromSupabase, saveSessionTargets } from './utils/loadProgramFromSupabase'
+import { seedUserData } from './utils/seedUserData'
 
 const MESO = 1
 const ANTHROPIC_KEY = import.meta.env.VITE_ANTHROPIC_KEY
@@ -15,11 +16,11 @@ function saveHistory(h) { localStorage.setItem(HISTORY_KEY, JSON.stringify(h)) }
 
 const PROGRESS_KEY = 'swolebro_progress'
 const DEFAULT_PROGRESS = {
-  push_a: { week: 3 },
-  push_b: { week: 3 },
+  push_a: { week: 4 },
+  push_b: { week: 4 },
   pull_a: { week: 4 },
-  pull_b: { week: 3 },
-  day_5:  { week: 1 },
+  pull_b: { week: 4 },
+  day_5:  { week: 4 },
 }
 function loadProgress() {
   try { const s = localStorage.getItem(PROGRESS_KEY); if (s) return JSON.parse(s) } catch {}
@@ -45,76 +46,72 @@ const C = {
 
 const DEFAULT_SPLIT = {
   push_a: {
-    key: 'push_a', label: 'Push A', sub: 'Chest, Triceps & Legs',
+    key: 'push_a', label: 'Push A', sub: 'Incline Chest · Shoulders · Triceps · Legs',
     exercises: [
-      { id: 'nb_inc',     name: 'Nautilus PL Incline Bench',       type: 'straight', sets: 4, min: 8,  max: 8,  w: 55,   note: '/side' },
-      { id: 'nb_flat',    name: 'Nautilus PL Flat Bench',          type: 'straight', sets: 3, min: 10, max: 10, w: 80,   note: '/side' },
-      { id: 'fly_a',      name: 'Arsenal Fly Machine',             type: 'myo',      w: 27.5 },
-      { id: 'lat_r_a',    name: 'Arsenal Lateral Raises',          type: 'myo',      w: 35 },
-      { id: 'tri_rope_a', name: 'Cable Rope Overhead Extension',   type: 'straight', sets: 3, min: 12, max: 12, w: null },
-      { id: 'tri_push_a', name: 'Tricep Pushdowns',                type: 'myo',      w: 54 },
-      { id: 'leg_pr_a',   name: 'Nautilus Xpload Leg Press',        type: 'straight', sets: 3, min: 10, max: 10, w: 135,  note: '/side' },
-      { id: 'leg_ext_a',  name: 'Nautilus Leg Extensions',         type: 'myo',      w: 100 },
-      { id: 'pallof',     name: 'Pallof Press',                    type: 'straight', sets: 2, min: 12, max: 12, w: null, note: '/side' },
+      { id: 'pa_inc',      name: 'Nautilus PL Incline Bench',      type: 'straight', sets: 4, min: 8,  max: 8,  w: 90,   note: '/side' },
+      { id: 'pa_db_inc',   name: 'DB 45 Degree Incline',           type: 'straight', sets: 3, min: 10, max: 12, w: 55 },
+      { id: 'pa_seat_pr',  name: 'Nautilus PL Seated Press',       type: 'straight', sets: 3, min: 10, max: 10, w: 60,   note: '/side' },
+      { id: 'pa_fly',      name: 'Arsenal Fly Machine',            type: 'myo',      w: 30 },
+      { id: 'pa_lat_r',    name: 'Arsenal Lateral Raises',         type: 'myo',      w: 40 },
+      { id: 'pa_rope_oh',  name: 'Cable Rope Overhead Extension',  type: 'straight', sets: 3, min: 12, max: 12, w: 45 },
+      { id: 'pa_pushdn',   name: 'Tricep Pushdowns',               type: 'myo',      w: 54 },
+      { id: 'pa_leg_pr',   name: 'Nautilus Xpload Leg Press',      type: 'straight', sets: 3, min: 10, max: 10, w: 135,  note: '/side' },
+      { id: 'pa_leg_ext',  name: 'Nautilus Leg Extensions',        type: 'myo',      w: 120 },
+      { id: 'pa_woodchop', name: 'Cable Woodchop',                 type: 'straight', sets: 2, min: 12, max: 12, w: null, note: '/side' },
     ]
   },
   push_b: {
-    key: 'push_b', label: 'Push B', sub: 'Shoulders, Chest & Legs',
+    key: 'push_b', label: 'Push B', sub: 'Flat Chest · Shoulders · Triceps · Legs',
     exercises: [
-      { id: 'ohp',        name: 'Standing Barbell OHP',            type: 'straight', sets: 4, min: 8,  max: 8,  w: null },
-      { id: 'seat_pr',    name: 'Nautilus PL Seated Press',        type: 'straight', sets: 3, min: 10, max: 10, w: 55,   note: '/side' },
-      { id: 'lat_r_b',    name: 'Arsenal Lateral Raises',          type: 'myo',      w: 35 },
-      { id: 'landmine',   name: 'Landmine Press',                  type: 'straight', sets: 3, min: 10, max: 12, w: null },
-      { id: 'fly_b',      name: 'Arsenal Fly Machine',             type: 'myo',      w: 25 },
-      { id: 'tri_rope_b', name: 'Cable Rope Overhead Extension',   type: 'myo',      w: null },
-      { id: 'tri_over',   name: 'Tricep Overhead Extension',        type: 'straight', sets: 3, min: 12, max: 12, w: 44 },
-      { id: 'leg_pr_b',   name: 'Nautilus Xpload Leg Press',        type: 'straight', sets: 3, min: 10, max: 10, w: 75,   note: '/side' },
-      { id: 'leg_ext_b',  name: 'Nautilus Leg Extensions',         type: 'myo',      w: 120 },
-      { id: 'woodchop',   name: 'Cable Woodchop',                  type: 'straight', sets: 2, min: 12, max: 12, w: null, note: '/side' },
+      { id: 'pb_flat',     name: 'Nautilus PL Flat Bench',         type: 'straight', sets: 4, min: 8,  max: 10, w: 60,   note: '/side' },
+      { id: 'pb_db_flat',  name: 'DB Flat Bench',                  type: 'straight', sets: 3, min: 10, max: 12, w: 65 },
+      { id: 'pb_ohp',      name: 'Standing Barbell OHP',           type: 'straight', sets: 3, min: 8,  max: 10, w: 25 },
+      { id: 'pb_fly',      name: 'Arsenal Fly Machine',            type: 'myo',      w: 30 },
+      { id: 'pb_lat_r',    name: 'Arsenal Lateral Raises',         type: 'myo',      w: 30 },
+      { id: 'pb_rope_oh',  name: 'Cable Rope Overhead Extension',  type: 'myo',      w: 45 },
+      { id: 'pb_leg_pr',   name: 'Nautilus Xpload Leg Press',      type: 'straight', sets: 3, min: 10, max: 10, w: 135,  note: '/side' },
+      { id: 'pb_leg_ext',  name: 'Nautilus Leg Extensions',        type: 'myo',      w: 120 },
+      { id: 'pb_woodchop', name: 'Cable Woodchop',                 type: 'straight', sets: 2, min: 12, max: 12, w: null, note: '/side' },
     ]
   },
   pull_a: {
     key: 'pull_a', label: 'Pull A', sub: 'Back Width · Biceps · Hamstrings',
     exercises: [
-      { id: 'lat_pr',     name: 'Cable Lat Prayers',               type: 'myo',      w: 58.5 },
-      { id: 'row_mid',    name: 'Nautilus Chest Supported Row Mid', type: 'straight', sets: 3, min: 10, max: 12, w: 140 },
-      { id: 'fp_a',       name: 'Cable Face Pulls',                type: 'myo',      w: 58.5 },
-      { id: 'cc_a',       name: 'Cable Curls',                     type: 'myo',      w: 43 },
-      { id: 'hammer_a',   name: 'Hammer Curls',                    type: 'straight', sets: 3, min: 12, max: 12, w: null },
-      { id: 'rdl',        name: 'Romanian Deadlift',               type: 'straight', sets: 3, min: 8,  max: 8,  w: 135 },
-      { id: 'ham_a',      name: 'Nautilus Hamstring Curls',        type: 'myo',      w: 80 },
-      { id: 'ab_wheel_a', name: 'Ab Wheel Rollout',                type: 'straight', sets: 2, min: 10, max: 10, w: null },
+      { id: 'pla_pd_over', name: 'Nautilus Lat Pulldown overhand',    type: 'straight', sets: 4, min: 8,  max: 10, w: 121 },
+      { id: 'pla_row_mid', name: 'Nautilus Chest Supported Row Mid',  type: 'straight', sets: 3, min: 10, max: 12, w: 140 },
+      { id: 'pla_fp',      name: 'Cable Face Pulls',                  type: 'myo',      w: 43 },
+      { id: 'pla_lat_pr',  name: 'Cable Lat Prayers',                 type: 'myo',      w: 58.5 },
+      { id: 'pla_cc',      name: 'Cable Curls',                       type: 'myo',      w: 43 },
+      { id: 'pla_hammer',  name: 'Hammer Curls',                      type: 'straight', sets: 3, min: 12, max: 12, w: 35 },
+      { id: 'pla_rdl',     name: 'Romanian Deadlift',                 type: 'straight', sets: 3, min: 8,  max: 8,  w: 135 },
+      { id: 'pla_ham',     name: 'Nautilus Hamstring Curls',          type: 'myo',      w: 80 },
+      { id: 'pla_pallof',  name: 'Pallof Press',                      type: 'straight', sets: 2, min: 12, max: 12, w: null, note: '/side' },
     ]
   },
   pull_b: {
-    key: 'pull_b', label: 'Pull B', sub: 'Biceps · Upper Back · Hamstrings',
+    key: 'pull_b', label: 'Pull B', sub: 'Upper Back · Biceps · Hamstrings',
     exercises: [
-      { id: 'pd_under',   name: 'Nautilus Lat Pulldown underhand',  type: 'straight', sets: 4, min: 8,  max: 12, w: null },
-      { id: 'row_high',   name: 'Nautilus Chest Supported Row High',type: 'straight', sets: 3, min: 10, max: 15, w: null },
-      { id: 'fp_b',       name: 'Cable Face Pulls',                type: 'myo',      w: null },
-      { id: 'rd_b',       name: 'Cable Rear Delt Fly',             type: 'myo',      w: null },
-      { id: 'inc_curl',   name: 'Incline DB Curls',                type: 'myo',      w: null },
-      { id: 'cc_b',       name: 'Cable Curls',                     type: 'straight', sets: 3, min: 12, max: 12, w: 38.5 },
-      { id: 'ham_b',      name: 'Nautilus Hamstring Curls',        type: 'myo',      w: null },
-      { id: 'hip_ab_b',   name: 'Hip Abductor Machine',            type: 'straight', sets: 3, min: 15, max: 15, w: null },
-      { id: 'leg_raise',  name: 'Hanging Leg Raise',               type: 'straight', sets: 2, min: 12, max: 12, w: null },
+      { id: 'plb_pd_under', name: 'Nautilus Lat Pulldown underhand',    type: 'straight', sets: 4, min: 8,  max: 12, w: 121 },
+      { id: 'plb_row_high', name: 'Nautilus Chest Supported Row High',  type: 'straight', sets: 3, min: 10, max: 15, w: 50 },
+      { id: 'plb_fp',       name: 'Cable Face Pulls',                   type: 'myo',      w: 58.5 },
+      { id: 'plb_cs_rd',    name: 'Chest Supported Rear Delt Raises',   type: 'myo',      w: null },
+      { id: 'plb_inc_curl', name: 'Incline DB Curls',                   type: 'myo',      w: 20 },
+      { id: 'plb_cc',       name: 'Cable Curls',                        type: 'straight', sets: 3, min: 12, max: 12, w: 38.5 },
+      { id: 'plb_ham',      name: 'Nautilus Hamstring Curls',           type: 'myo',      w: 80 },
+      { id: 'plb_hip_ab',   name: 'Hip Abductor Machine',               type: 'straight', sets: 3, min: 15, max: 15, w: null },
+      { id: 'plb_pallof',   name: 'Pallof Press',                       type: 'straight', sets: 2, min: 12, max: 12, w: null, note: '/side' },
     ]
   },
   day_5: {
-    key: 'day_5', label: 'Day 5', sub: 'Arms · Abs · Weak Points (Optional)',
+    key: 'day_5', label: 'Day 5', sub: 'Arms · Core (Optional)',
     exercises: [
-      { id: 'ez_curl',    name: 'EZ Bar Curls',                    type: 'straight', sets: 4, min: 10, max: 10, w: null },
-      { id: 'hammer_5',   name: 'Hammer Curls',                    type: 'straight', sets: 3, min: 12, max: 12, w: null },
-      { id: 'cc_5',       name: 'Cable Curls',                     type: 'myo',      w: null },
-      { id: 'tri_rope_5', name: 'Cable Rope Overhead Extension',   type: 'straight', sets: 3, min: 12, max: 12, w: null },
-      { id: 'tri_push_5', name: 'Tricep Pushdowns',                type: 'myo',      w: null },
-      { id: 'lat_r_5',    name: 'Arsenal Lateral Raises',          type: 'myo',      w: 35 },
-      { id: 'landmine_5', name: 'Landmine Press',                  type: 'straight', sets: 3, min: 12, max: 12, w: null },
-      { id: 'serratus',   name: 'Cable Serratus Punch',            type: 'straight', sets: 3, min: 15, max: 15, w: null },
-      { id: 'ab_wheel_5', name: 'Ab Wheel Rollout',                type: 'straight', sets: 3, min: 10, max: 10, w: null },
-      { id: 'leg_raise_5',name: 'Hanging Leg Raise',               type: 'straight', sets: 3, min: 15, max: 15, w: null },
-      { id: 'woodchop_5', name: 'Cable Woodchop',                  type: 'straight', sets: 3, min: 12, max: 12, w: null, note: '/side' },
-      { id: 'pallof_5',   name: 'Pallof Press',                    type: 'straight', sets: 2, min: 12, max: 12, w: null, note: '/side' },
+      { id: 'd5_ez',        name: 'EZ Bar Curls',                   type: 'straight', sets: 4, min: 10, max: 10, w: null },
+      { id: 'd5_inc_curl',  name: 'Incline DB Curls',               type: 'myo',      w: null },
+      { id: 'd5_pushdn',    name: 'Tricep Pushdowns',               type: 'myo',      w: null },
+      { id: 'd5_rope_oh',   name: 'Cable Rope Overhead Extension',  type: 'straight', sets: 3, min: 12, max: 12, w: null },
+      { id: 'd5_lat_r',     name: 'Arsenal Lateral Raises',         type: 'myo',      w: null },
+      { id: 'd5_ab_wheel',  name: 'Ab Wheel Rollout',               type: 'straight', sets: 3, min: 10, max: 10, w: null },
+      { id: 'd5_leg_raise', name: 'Hanging Leg Raise',              type: 'straight', sets: 3, min: 12, max: 12, w: null },
     ]
   },
 }
@@ -233,7 +230,7 @@ function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSessio
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '36px 20px 40px', background: C.bg }}>
       <div style={{ marginBottom: 32 }}>
-        <div style={{ fontSize: 13, color: C.acc, letterSpacing: 4, marginBottom: 8, fontWeight: 'bold' }}>SWOLEBRO TRAINING</div>
+        <div style={{ fontSize: 15, color: C.acc, letterSpacing: 4, marginBottom: 8, fontWeight: 'bold' }}>SWOLEBRO TRAINING</div>
         <div style={{ fontSize: 28, fontWeight: 700, color: C.text, lineHeight: 1.2 }}>Lake Bod 2026</div>
         <div style={{ fontSize: 14, color: C.sub, marginTop: 4 }}>Mesocycle {MESO} · RP Method</div>
       </div>
@@ -241,7 +238,7 @@ function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSessio
       {hasActiveSession && (
         <button onClick={onResumeSession}
           style={{ width: '100%', marginBottom: 20, padding: '18px 20px', background: C.accLight, border: `1px solid ${C.acc}`, borderRadius: 14, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}>
-          <div style={{ fontSize: 12, color: C.acc, letterSpacing: 2, fontWeight: 'bold', marginBottom: 4 }}>SESSION IN PROGRESS</div>
+          <div style={{ fontSize: 15, color: C.acc, letterSpacing: 2, fontWeight: 'bold', marginBottom: 4 }}>SESSION IN PROGRESS</div>
           <div style={{ fontSize: 17, color: C.text, fontWeight: 600 }}>
             {split[activeSessionKey]?.label} — tap to resume →
           </div>
@@ -250,7 +247,7 @@ function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSessio
 
       {recentHistory.length > 0 && (
         <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 12, color: C.muted, letterSpacing: 2, marginBottom: 10, fontWeight: 'bold' }}>RECENT</div>
+          <div style={{ fontSize: 15, color: C.muted, letterSpacing: 2, marginBottom: 10, fontWeight: 'bold' }}>RECENT</div>
           {recentHistory.map((h, i) => {
             const date = new Date(h.date)
             const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
@@ -260,14 +257,14 @@ function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSessio
                 style={{ background: C.surface, border: `0.5px solid ${C.border}`, borderRadius: 12, padding: '12px 16px', marginBottom: 8, cursor: h.summary ? 'pointer' : 'default' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ fontSize: 15, fontWeight: 600, color: C.text }}>{h.label}</div>
-                  <div style={{ fontSize: 12, color: C.muted }}>{dateStr}</div>
+                  <div style={{ fontSize: 15, color: C.muted }}>{dateStr}</div>
                 </div>
                 <div style={{ display: 'flex', gap: 12, marginTop: 4, alignItems: 'center' }}>
-                  <div style={{ fontSize: 12, color: C.acc, fontWeight: 'bold', letterSpacing: 1 }}>CYCLE {h.week}</div>
-                  {h.summary && <div style={{ fontSize: 12, color: C.muted }}>{isExpanded ? '▲' : '▼ coach note'}</div>}
+                  <div style={{ fontSize: 15, color: C.acc, fontWeight: 'bold', letterSpacing: 1 }}>CYCLE {h.week}</div>
+                  {h.summary && <div style={{ fontSize: 15, color: C.muted }}>{isExpanded ? '▲' : '▼ coach note'}</div>}
                 </div>
                 {isExpanded && h.summary && (
-                  <div style={{ fontSize: 13, color: C.sub, marginTop: 8, lineHeight: 1.5, borderTop: `0.5px solid ${C.border}`, paddingTop: 8 }}>{h.summary}</div>
+                  <div style={{ fontSize: 15, color: C.sub, marginTop: 8, lineHeight: 1.5, borderTop: `0.5px solid ${C.border}`, paddingTop: 8 }}>{h.summary}</div>
                 )}
               </div>
             )
@@ -275,7 +272,7 @@ function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSessio
         </div>
       )}
 
-      <div style={{ fontSize: 12, color: C.muted, letterSpacing: 2, marginBottom: 12, fontWeight: 'bold' }}>SELECT TODAY'S SESSION</div>
+      <div style={{ fontSize: 15, color: C.muted, letterSpacing: 2, marginBottom: 12, fontWeight: 'bold' }}>SELECT TODAY'S SESSION</div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
         {mainDays.map(d => {
           const cycle = progress[d.key]?.week ?? 3
@@ -283,10 +280,10 @@ function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSessio
             <button key={d.key} onClick={() => onStart(d.key)}
               style={{ background: C.surface, border: `0.5px solid ${C.border}`, borderRadius: 14, padding: '20px 16px', textAlign: 'left', cursor: 'pointer', color: C.text, fontFamily: 'inherit' }}>
               <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 4, color: C.text }}>{d.label}</div>
-              <div style={{ fontSize: 13, color: C.sub }}>{d.sub}</div>
+              <div style={{ fontSize: 15, color: C.sub }}>{d.sub}</div>
               <div style={{ marginTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ fontSize: 12, color: C.muted, fontWeight: 'bold', letterSpacing: 1 }}>{d.exercises.length} EX</div>
-                <div style={{ fontSize: 12, color: C.acc, fontWeight: 'bold', letterSpacing: 1 }}>CYCLE {cycle}</div>
+                <div style={{ fontSize: 15, color: C.muted, fontWeight: 'bold', letterSpacing: 1 }}>{d.exercises.length} EX</div>
+                <div style={{ fontSize: 15, color: C.acc, fontWeight: 'bold', letterSpacing: 1 }}>CYCLE {cycle}</div>
               </div>
             </button>
           )
@@ -298,14 +295,14 @@ function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSessio
           style={{ width: '100%', marginBottom: 16, padding: '18px 20px', background: C.surface, border: `0.5px dashed ${C.border}`, borderRadius: 14, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <div style={{ fontSize: 17, fontWeight: 600, color: C.text }}>Day 5 — Optional</div>
-            <div style={{ fontSize: 13, color: C.sub, marginTop: 2 }}>Arms · Abs · Weak Points</div>
+            <div style={{ fontSize: 15, color: C.sub, marginTop: 2 }}>Arms · Abs · Weak Points</div>
           </div>
-          <div style={{ fontSize: 12, color: C.muted, fontWeight: 'bold', letterSpacing: 1 }}>CYCLE {progress['day_5']?.week ?? 1}</div>
+          <div style={{ fontSize: 15, color: C.muted, fontWeight: 'bold', letterSpacing: 1 }}>CYCLE {progress['day_5']?.week ?? 1}</div>
         </button>
       )}
 
       <button onClick={onEdit}
-        style={{ width: '100%', padding: '14px 0', background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 14, color: C.muted, fontSize: 13, fontWeight: 'bold', letterSpacing: 2, cursor: 'pointer', fontFamily: 'inherit' }}>
+        style={{ width: '100%', padding: '14px 0', background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 14, color: C.muted, fontSize: 15, fontWeight: 'bold', letterSpacing: 2, cursor: 'pointer', fontFamily: 'inherit' }}>
         EDIT PROGRAM
       </button>
     </div>
@@ -387,9 +384,9 @@ function EditScreen({ split, onSave, onBack }) {
               style={{ width: '100%', background: C.surface, border: `0.5px solid ${C.border}`, borderRadius: 12, padding: '14px 18px', textAlign: 'left', cursor: 'pointer', color: C.text, fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
                 <div style={{ fontSize: 18, fontWeight: 700 }}>{day.label}</div>
-                <div style={{ fontSize: 13, color: C.sub, marginTop: 2 }}>{day.sub}</div>
+                <div style={{ fontSize: 15, color: C.sub, marginTop: 2 }}>{day.sub}</div>
               </div>
-              <div style={{ fontSize: 13, color: C.muted, fontWeight: 'bold' }}>{day.exercises.length} EX {openDay === day.key ? '▲' : '▼'}</div>
+              <div style={{ fontSize: 15, color: C.muted, fontWeight: 'bold' }}>{day.exercises.length} EX {openDay === day.key ? '▲' : '▼'}</div>
             </button>
 
             {openDay === day.key && (
@@ -402,68 +399,68 @@ function EditScreen({ split, onSave, onBack }) {
                         <div onClick={() => setEditingIdx(`${day.key}-${i}`)} style={{ cursor: 'pointer' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div style={{ fontSize: 15, fontWeight: 600, color: C.text }}>{ex.name}</div>
-                            <div style={{ fontSize: 11, color: ex.type === 'myo' ? C.orange : C.blue, fontWeight: 'bold', letterSpacing: 1 }}>{ex.type === 'myo' ? 'MYO' : 'SETS'}</div>
+                            <div style={{ fontSize: 15, color: ex.type === 'myo' ? C.orange : C.blue, fontWeight: 'bold', letterSpacing: 1 }}>{ex.type === 'myo' ? 'MYO' : 'SETS'}</div>
                           </div>
-                          <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>
+                          <div style={{ fontSize: 15, color: C.muted, marginTop: 3 }}>
                             {ex.type === 'straight' ? `${ex.sets}×${ex.min}-${ex.max} @ ${fmt(ex.w)}lb${ex.note || ''}` : `Myo @ ${fmt(ex.w)}lb`}
                           </div>
                         </div>
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                           <div>
-                            <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>NAME</div>
+                            <div style={{ fontSize: 15, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>NAME</div>
                             <input value={ex.name} onChange={e => updateExercise(day.key, i, 'name', e.target.value)} style={inputStyle} />
                           </div>
                           <div style={{ display: 'flex', gap: 10 }}>
                             <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>TYPE</div>
+                              <div style={{ fontSize: 15, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>TYPE</div>
                               <select value={ex.type} onChange={e => updateExercise(day.key, i, 'type', e.target.value)} style={{ ...inputStyle, appearance: 'auto' }}>
                                 <option value="straight">Straight</option>
                                 <option value="myo">Myo</option>
                               </select>
                             </div>
                             <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>WEIGHT</div>
+                              <div style={{ fontSize: 15, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>WEIGHT</div>
                               <input type="number" value={ex.w ?? ''} placeholder="TBD" onChange={e => updateExercise(day.key, i, 'w', e.target.value)} style={inputStyle} />
                             </div>
                           </div>
                           {ex.type === 'straight' && (
                             <div style={{ display: 'flex', gap: 10 }}>
                               <div style={{ flex: 1 }}>
-                                <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>SETS</div>
+                                <div style={{ fontSize: 15, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>SETS</div>
                                 <input type="number" value={ex.sets ?? ''} onChange={e => updateExercise(day.key, i, 'sets', e.target.value)} style={inputStyle} />
                               </div>
                               <div style={{ flex: 1 }}>
-                                <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>MIN REPS</div>
+                                <div style={{ fontSize: 15, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>MIN REPS</div>
                                 <input type="number" value={ex.min ?? ''} onChange={e => updateExercise(day.key, i, 'min', e.target.value)} style={inputStyle} />
                               </div>
                               <div style={{ flex: 1 }}>
-                                <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>MAX REPS</div>
+                                <div style={{ fontSize: 15, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>MAX REPS</div>
                                 <input type="number" value={ex.max ?? ''} onChange={e => updateExercise(day.key, i, 'max', e.target.value)} style={inputStyle} />
                               </div>
                             </div>
                           )}
                           <div>
-                            <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>NOTE</div>
+                            <div style={{ fontSize: 15, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>NOTE</div>
                             <input value={ex.note || ''} placeholder="e.g. /side" onChange={e => updateExercise(day.key, i, 'note', e.target.value || undefined)} style={inputStyle} />
                           </div>
                           <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
                             <button onClick={() => moveExercise(day.key, i, -1)} disabled={i === 0}
-                              style={{ flex: 1, padding: '8px 0', background: C.bg, border: `0.5px solid ${C.border}`, borderRadius: 8, color: i === 0 ? C.border : C.sub, fontSize: 13, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>UP</button>
+                              style={{ flex: 1, padding: '8px 0', background: C.bg, border: `0.5px solid ${C.border}`, borderRadius: 8, color: i === 0 ? C.border : C.sub, fontSize: 15, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>UP</button>
                             <button onClick={() => moveExercise(day.key, i, 1)} disabled={i === day.exercises.length - 1}
-                              style={{ flex: 1, padding: '8px 0', background: C.bg, border: `0.5px solid ${C.border}`, borderRadius: 8, color: i === day.exercises.length - 1 ? C.border : C.sub, fontSize: 13, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>DOWN</button>
+                              style={{ flex: 1, padding: '8px 0', background: C.bg, border: `0.5px solid ${C.border}`, borderRadius: 8, color: i === day.exercises.length - 1 ? C.border : C.sub, fontSize: 15, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>DOWN</button>
                             <button onClick={() => removeExercise(day.key, i)}
-                              style={{ flex: 1, padding: '8px 0', background: '#FFF0F0', border: '0.5px solid #FFCCCC', borderRadius: 8, color: '#CC3333', fontSize: 13, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>DELETE</button>
+                              style={{ flex: 1, padding: '8px 0', background: '#FFF0F0', border: '0.5px solid #FFCCCC', borderRadius: 8, color: '#CC3333', fontSize: 15, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>DELETE</button>
                           </div>
                           <button onClick={() => setEditingIdx(null)}
-                            style={{ padding: '8px 0', background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 8, color: C.sub, fontSize: 13, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>DONE</button>
+                            style={{ padding: '8px 0', background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 8, color: C.sub, fontSize: 15, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>DONE</button>
                         </div>
                       )}
                     </div>
                   )
                 })}
                 <button onClick={() => addExercise(day.key)}
-                  style={{ width: '100%', padding: '12px 0', background: 'none', border: `0.5px dashed ${C.border}`, borderRadius: 10, color: C.muted, fontSize: 13, fontWeight: 'bold', letterSpacing: 1, cursor: 'pointer', marginTop: 4, fontFamily: 'inherit' }}>
+                  style={{ width: '100%', padding: '12px 0', background: 'none', border: `0.5px dashed ${C.border}`, borderRadius: 10, color: C.muted, fontSize: 15, fontWeight: 'bold', letterSpacing: 1, cursor: 'pointer', marginTop: 4, fontFamily: 'inherit' }}>
                   + ADD EXERCISE
                 </button>
               </div>
@@ -498,19 +495,19 @@ function PeekModal({ split, currentDayKey, onClose }) {
       <div onClick={e => e.stopPropagation()}
         style={{ position: 'absolute', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 480, background: C.surface, borderRadius: '20px 20px 0 0', display: 'flex', flexDirection: 'column', maxHeight: '80vh' }}>
         <div style={{ flexShrink: 0, padding: '18px 20px 14px', borderBottom: `0.5px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ fontSize: 12, color: C.muted, letterSpacing: 2, fontWeight: 'bold' }}>QUICK LOOK</div>
+          <div style={{ fontSize: 15, color: C.muted, letterSpacing: 2, fontWeight: 'bold' }}>QUICK LOOK</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.muted, fontSize: 22, cursor: 'pointer', lineHeight: 1, padding: '0 4px' }}>×</button>
         </div>
         <div style={{ flexShrink: 0, display: 'flex', overflowX: 'auto', padding: '10px 16px 0', gap: 8 }}>
           {days.map(d => (
             <button key={d.key} onClick={() => setPeekKey(d.key)}
-              style={{ flexShrink: 0, padding: '7px 14px', borderRadius: 20, border: `1px solid ${peekKey === d.key ? C.acc : C.border}`, background: peekKey === d.key ? C.accLight : 'none', color: peekKey === d.key ? C.acc : C.sub, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+              style={{ flexShrink: 0, padding: '7px 14px', borderRadius: 20, border: `1px solid ${peekKey === d.key ? C.acc : C.border}`, background: peekKey === d.key ? C.accLight : 'none', color: peekKey === d.key ? C.acc : C.sub, fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
               {d.label}{d.key === currentDayKey ? ' ●' : ''}
             </button>
           ))}
         </div>
         <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
-          <div style={{ padding: '8px 20px 12px', fontSize: 13, color: C.sub }}>{day.sub}</div>
+          <div style={{ padding: '8px 20px 12px', fontSize: 15, color: C.sub }}>{day.sub}</div>
           {day.exercises.map((ex, i) => {
             const target = ex.type === 'straight'
               ? `${ex.sets}×${ex.min}${ex.max !== ex.min ? '-' + ex.max : ''} @ ${fmt(ex.w)}lb${ex.note ?? ''}`
@@ -518,13 +515,13 @@ function PeekModal({ split, currentDayKey, onClose }) {
             return (
               <div key={ex.id} style={{ display: 'flex', alignItems: 'center', padding: '13px 20px', borderBottom: `0.5px solid ${C.border}`, gap: 14 }}>
                 <div style={{ width: 24, height: 24, borderRadius: '50%', border: `1.5px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <span style={{ color: C.muted, fontSize: 12, fontWeight: 'bold' }}>{i + 1}</span>
+                  <span style={{ color: C.muted, fontSize: 15, fontWeight: 'bold' }}>{i + 1}</span>
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 15, fontWeight: 600, color: C.text }}>{ex.name}</div>
-                  <div style={{ fontSize: 13, color: C.sub, marginTop: 2 }}>{target}</div>
+                  <div style={{ fontSize: 15, color: C.sub, marginTop: 2 }}>{target}</div>
                 </div>
-                <div style={{ fontSize: 11, color: ex.type === 'myo' ? C.orange : C.blue, letterSpacing: 1, fontWeight: 'bold', flexShrink: 0 }}>
+                <div style={{ fontSize: 15, color: ex.type === 'myo' ? C.orange : C.blue, letterSpacing: 1, fontWeight: 'bold', flexShrink: 0 }}>
                   {ex.type === 'myo' ? 'MYO' : 'SETS'}
                 </div>
               </div>
@@ -651,13 +648,13 @@ function SessionScreen({
 
   if (sessionScreen === 'results') return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '28px 20px 40px', background: C.bg }}>
-      <div style={{ fontSize: 12, color: C.acc, letterSpacing: 3, marginBottom: 8, fontWeight: 'bold' }}>
+      <div style={{ fontSize: 15, color: C.acc, letterSpacing: 3, marginBottom: 8, fontWeight: 'bold' }}>
         NEXT {day.label.toUpperCase()} — CYCLE {sessionResult?.next_cycle ?? currentCycle + 1}
       </div>
       <div style={{ fontSize: 36, fontWeight: 800, lineHeight: 1, marginBottom: 6, color: C.text }}>{day.label}</div>
       {sessionResult?.session_summary && (
         <div style={{ background: C.accLight, border: `0.5px solid #9EC4A8`, borderRadius: 12, padding: '14px 18px', margin: '18px 0 24px' }}>
-          <div style={{ fontSize: 12, color: C.acc, letterSpacing: 1, marginBottom: 6, fontWeight: 'bold' }}>COACH NOTE</div>
+          <div style={{ fontSize: 15, color: C.acc, letterSpacing: 1, marginBottom: 6, fontWeight: 'bold' }}>COACH NOTE</div>
           <div style={{ fontSize: 15, color: C.text, lineHeight: 1.6 }}>{sessionResult.session_summary}</div>
         </div>
       )}
@@ -666,11 +663,11 @@ function SessionScreen({
           <div key={i} style={{ borderBottom: `0.5px solid ${C.border}`, padding: '14px 0', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 16, fontWeight: 600, color: C.text }}>{t.exercise_name}</div>
-              {t.coaching_note && <div style={{ fontSize: 13, color: C.orange, marginTop: 3 }}>↳ {t.coaching_note}</div>}
+              {t.coaching_note && <div style={{ fontSize: 15, color: C.orange, marginTop: 3 }}>↳ {t.coaching_note}</div>}
             </div>
             <div style={{ textAlign: 'right', flexShrink: 0 }}>
               <div style={{ fontSize: 20, color: C.acc, fontWeight: 800, fontFamily: 'monospace' }}>{fmt(t.target_weight)}lb</div>
-              <div style={{ fontSize: 13, color: C.sub, marginTop: 2 }}>
+              <div style={{ fontSize: 15, color: C.sub, marginTop: 2 }}>
                 {t.target_sets ? t.target_sets + 'x' : 'myo '}
                 {t.target_reps_min}{t.target_reps_max !== t.target_reps_min ? '-' + t.target_reps_max : ''}
               </div>
@@ -713,10 +710,10 @@ function SessionScreen({
           style={{ background: 'none', border: 'none', color: C.sub, fontSize: 28, cursor: 'pointer', padding: '4px 8px', lineHeight: 1 }}>←</button>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 20, fontWeight: 700, color: C.text, lineHeight: 1.1 }}>{day.label}</div>
-          <div style={{ fontSize: 13, color: C.sub, marginTop: 2 }}>{day.sub} · Cycle {currentCycle}</div>
+          <div style={{ fontSize: 15, color: C.sub, marginTop: 2 }}>{day.sub} · Cycle {currentCycle}</div>
         </div>
         <button onClick={() => setShowPeek(true)} aria-label="View other days"
-          style={{ background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 8, color: C.muted, fontSize: 11, fontWeight: 'bold', letterSpacing: 1, padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit', marginRight: 4 }}>DAYS</button>
+          style={{ background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 8, color: C.muted, fontSize: 15, fontWeight: 'bold', letterSpacing: 1, padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit', marginRight: 4 }}>DAYS</button>
         <div style={{ fontSize: 15, color: C.muted, fontFamily: 'monospace', fontWeight: 'bold' }}>{loggedCount}/{sessionExercises.length}</div>
       </div>
 
@@ -787,14 +784,14 @@ function SessionScreen({
                     <div style={{ width: 28, height: 28, borderRadius: '50%', border: `1.5px solid ${logged ? C.acc : C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: logged ? C.accLight : 'transparent' }}>
                       {logged
                         ? <span style={{ color: C.acc, fontSize: 14, fontWeight: 'bold' }}>✓</span>
-                        : <span style={{ color: C.muted, fontSize: 13, fontWeight: 'bold' }}>{i + 1}</span>
+                        : <span style={{ color: C.muted, fontSize: 15, fontWeight: 'bold' }}>{i + 1}</span>
                       }
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 16, fontWeight: 600, color: C.text, lineHeight: 1.2 }}>{ex.name}</div>
-                      <div style={{ fontSize: 13, color: C.sub, marginTop: 4 }}>{target}</div>
+                      <div style={{ fontSize: 15, color: C.sub, marginTop: 4 }}>{target}</div>
                     </div>
-                    <div style={{ fontSize: 11, color: ex.type === 'myo' ? C.orange : C.blue, letterSpacing: 1, fontWeight: 'bold', flexShrink: 0 }}>
+                    <div style={{ fontSize: 15, color: ex.type === 'myo' ? C.orange : C.blue, letterSpacing: 1, fontWeight: 'bold', flexShrink: 0 }}>
                       {ex.type === 'myo' ? 'MYO' : 'SETS'}
                     </div>
                   </div>
@@ -806,11 +803,11 @@ function SessionScreen({
               {timerEnd ? (
                 <div onClick={cancelTimer} style={{ cursor: 'pointer', padding: '12px 18px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <div style={{ fontSize: 13, color: C.muted, fontWeight: 'bold', letterSpacing: 1 }}>REST</div>
+                    <div style={{ fontSize: 15, color: C.muted, fontWeight: 'bold', letterSpacing: 1 }}>REST</div>
                     <div style={{ fontSize: 26, fontWeight: 800, color: C.acc, fontFamily: 'monospace' }}>
                       {Math.floor(timerRemaining / 60)}:{String(timerRemaining % 60).padStart(2, '0')}
                     </div>
-                    <div style={{ fontSize: 11, color: C.muted, letterSpacing: 1 }}>TAP TO CANCEL</div>
+                    <div style={{ fontSize: 15, color: C.muted, letterSpacing: 1 }}>TAP TO CANCEL</div>
                   </div>
                   <div style={{ height: 4, background: C.border, borderRadius: 2, overflow: 'hidden' }}>
                     <div style={{ height: '100%', background: C.acc, borderRadius: 2, transition: 'width 0.25s linear', width: `${(timerRemaining / timerDuration) * 100}%` }} />
@@ -818,10 +815,10 @@ function SessionScreen({
                 </div>
               ) : (
                 <div style={{ display: 'flex', alignItems: 'center', padding: '10px 18px', gap: 8 }}>
-                  <div style={{ fontSize: 12, color: C.muted, fontWeight: 'bold', letterSpacing: 1, marginRight: 4 }}>REST</div>
+                  <div style={{ fontSize: 15, color: C.muted, fontWeight: 'bold', letterSpacing: 1, marginRight: 4 }}>REST</div>
                   {[['60s', 60], ['90s', 90], ['2m', 120]].map(([label, secs]) => (
                     <button key={label} onClick={() => startTimer(secs)}
-                      style={{ flex: 1, padding: '9px 0', background: C.bg, border: `0.5px solid ${C.border}`, borderRadius: 10, color: C.sub, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      style={{ flex: 1, padding: '9px 0', background: C.bg, border: `0.5px solid ${C.border}`, borderRadius: 10, color: C.sub, fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
                       {label}
                     </button>
                   ))}
@@ -899,13 +896,24 @@ export default function App() {
       const user = await getSupabaseUser()
       if (!user) return
       try {
-        // One-time migration: push localStorage data into normalized Supabase tables
-        if (!localStorage.getItem('supabase_migrated')) {
-          await migrateToSupabase(user.id, split, progress)
-          localStorage.setItem('supabase_migrated', 'true')
+        let result = await loadProgramFromSupabase(user.id)
+
+        if (!result?.program) {
+          // Migrate from localStorage if data exists there
+          const hasLocalData = localStorage.getItem(PROGRAM_KEY)
+          if (hasLocalData && !localStorage.getItem('supabase_migrated')) {
+            await migrateToSupabase(user.id, split, progress)
+            localStorage.setItem('supabase_migrated', 'true')
+            result = await loadProgramFromSupabase(user.id)
+          }
         }
-        // Load program from Supabase (source of truth)
-        const result = await loadProgramFromSupabase(user.id)
+
+        if (!result?.program) {
+          // Fresh install — seed the full program at cycle 4
+          await seedUserData(user.id)
+          result = await loadProgramFromSupabase(user.id)
+        }
+
         if (result?.program) {
           setSplit(result.program)
           setProgressRaw(result.progress)
@@ -913,7 +921,6 @@ export default function App() {
         }
       } catch (e) {
         console.error('[supabase init]', e)
-        // localStorage-loaded split/progress remain as fallback
       }
     }
     initSupabase()
