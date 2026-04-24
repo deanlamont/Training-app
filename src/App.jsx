@@ -678,15 +678,27 @@ function SessionScreen({
 
   async function runProg(finalLogs, finalEx) {
     setSessionScreen('processing')
-    try {
-      const raw = await callClaude(PROG_SYS, [{ role: 'user', content: buildProgPrompt(day, finalLogs, finalEx, currentCycle) }], 1000)
-      const jsonMatch = raw.match(/\{[\s\S]*\}/)
-      const jsonStr = jsonMatch ? jsonMatch[0] : raw
-      const parsed = JSON.parse(jsonStr.replace(/[\r\n]+/g, ' '))
-      setSessionResult(parsed); setSessionScreen('results')
-    } catch (e) {
-      setSessionResult({ session_summary: `Error: ${e.message}`, targets: [], flags: [], next_cycle: currentCycle + 1 })
-      setSessionScreen('results')
+    const userMsg = { role: 'user', content: buildProgPrompt(day, finalLogs, finalEx, currentCycle) }
+    // Try once, then retry once with a fresh call — LLMs occasionally emit malformed JSON
+    // (truncated arrays, trailing commas, unescaped newlines). 3000 tokens is enough
+    // headroom for ~15 exercises worth of targets + a short summary.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const raw = await callClaude(PROG_SYS, [userMsg], 3000)
+        const jsonMatch = raw.match(/\{[\s\S]*\}/)
+        const jsonStr = (jsonMatch ? jsonMatch[0] : raw)
+          .replace(/[\r\n]+/g, ' ')
+          .replace(/,(\s*[}\]])/g, '$1')  // strip trailing commas before } or ]
+        const parsed = JSON.parse(jsonStr)
+        setSessionResult(parsed); setSessionScreen('results')
+        return
+      } catch (e) {
+        console.error(`[runProg] attempt ${attempt + 1} failed`, e)
+        if (attempt === 1) {
+          setSessionResult({ session_summary: `Error: ${e.message}`, targets: [], flags: [], next_cycle: currentCycle + 1 })
+          setSessionScreen('results')
+        }
+      }
     }
   }
 
