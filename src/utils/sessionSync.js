@@ -97,6 +97,43 @@ export async function resolveExerciseByName(name) {
 }
 
 /**
+ * Fetches the single most recent session for a user across all days — used by the
+ * "Recover last cloud session" button on the home screen. Returns the session and
+ * its set_logs along with the split_day_id needed to resolve the day key.
+ */
+export async function fetchMostRecentSessionAny(userId) {
+  if (!supabase || !userId) return null
+  try {
+    const { data: sessionsData } = await supabase
+      .from('sessions')
+      .select('id, split_day_id, week_number, mesocycle, created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+    const latest = sessionsData?.[0]
+    if (!latest) return null
+
+    const { data: logs } = await supabase
+      .from('set_logs')
+      .select('*')
+      .eq('session_id', latest.id)
+      .order('set_number', { ascending: true })
+
+    return {
+      sessionId: latest.id,
+      splitDayId: latest.split_day_id,
+      weekNumber: latest.week_number,
+      mesocycle: latest.mesocycle,
+      createdAt: latest.created_at,
+      setLogs: logs ?? [],
+    }
+  } catch (e) {
+    console.error('[fetchMostRecentSessionAny] failed', e)
+    return null
+  }
+}
+
+/**
  * Fetches the most recent session for a given split_day (by created_at desc) along
  * with all its set_logs. Used for recovery when local state was cleared before a
  * successful progression calculation.

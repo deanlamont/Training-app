@@ -3,7 +3,9 @@ import { supabase } from './utils/supabaseClient'
 import { migrateToSupabase } from './utils/migrateToSupabase'
 import { loadProgramFromSupabase, saveSessionTargets } from './utils/loadProgramFromSupabase'
 import { seedUserData } from './utils/seedUserData'
-import { createSessionRow, writeExerciseSets, markSessionComplete, resolveExerciseByName, fetchLatestSessionData } from './utils/sessionSync'
+import { createSessionRow, writeExerciseSets, markSessionComplete, resolveExerciseByName, fetchLatestSessionData, fetchMostRecentSessionAny } from './utils/sessionSync'
+
+const APP_VERSION = 'v2026-04-24e'  // bump on every deploy — visible on home to verify cache busted
 
 const MESO = 1
 const ANTHROPIC_KEY = import.meta.env.VITE_ANTHROPIC_KEY
@@ -239,7 +241,7 @@ async function callClaude(system, messages, maxTokens = 400) {
 }
 
 // ─── Home Screen ──────────────────────────────────────────────────────────────
-function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSession, activeSessionKey, onResumeSession, onRecover }) {
+function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSession, activeSessionKey, onResumeSession, onRecover, onRecoverLatest }) {
   const days = Object.values(split)
   const mainDays = days.filter(d => d.key !== 'day_5')
   const optDay = days.find(d => d.key === 'day_5')
@@ -330,9 +332,18 @@ function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSessio
       )}
 
       <button onClick={onEdit}
-        style={{ width: '100%', padding: '14px 0', background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 14, color: C.muted, fontSize: 15, fontWeight: 'bold', letterSpacing: 2, cursor: 'pointer', fontFamily: 'inherit' }}>
+        style={{ width: '100%', padding: '14px 0', background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 14, color: C.muted, fontSize: 15, fontWeight: 'bold', letterSpacing: 2, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 10 }}>
         EDIT PROGRAM
       </button>
+      {onRecoverLatest && (
+        <button onClick={onRecoverLatest}
+          style={{ width: '100%', padding: '14px 0', background: 'none', border: `0.5px dashed ${C.border}`, borderRadius: 14, color: C.acc, fontSize: 14, fontWeight: 'bold', letterSpacing: 2, cursor: 'pointer', fontFamily: 'inherit' }}>
+          ⟳ RECOVER LAST CLOUD SESSION
+        </button>
+      )}
+      <div style={{ textAlign: 'center', marginTop: 20, fontSize: 12, color: C.muted, letterSpacing: 1 }}>
+        {APP_VERSION}
+      </div>
     </div>
   )
 }
@@ -1103,6 +1114,19 @@ export default function App() {
     await runProgression(splitDay, logsByShortId, exercises, cycle)
   }
 
+  // Recover the single most recent session (any day). Uses Supabase to find which
+  // split_day it was for and delegates to recoverDay.
+  async function recoverLatest() {
+    const user = supabaseUserRef.current ?? await getSupabaseUser()
+    if (!user) { alert('Not connected to cloud — can\'t recover.'); return }
+    const latest = await fetchMostRecentSessionAny(user.id)
+    if (!latest) { alert('No sessions found in cloud.'); return }
+    // Find the dayKey for this splitDayId
+    const dayEntry = Object.entries(split).find(([, d]) => d._split_day_id === latest.splitDayId)
+    if (!dayEntry) { alert('Cloud session references an unknown day.'); return }
+    await recoverDay(dayEntry[0])
+  }
+
   async function startSession(key) {
     const day = split[key]
     const cycle = progress[key]?.week ?? (key === 'day_5' ? 1 : 3)
@@ -1208,7 +1232,7 @@ export default function App() {
       {screen === 'home' && (
         <HomeScreen split={split} progress={progress} history={history} onStart={startSession} onEdit={() => setScreen('edit')}
           hasActiveSession={hasActiveSession} activeSessionKey={dayKey} onResumeSession={() => setScreen('session')}
-          onRecover={recoverDay} />
+          onRecover={recoverDay} onRecoverLatest={recoverLatest} />
       )}
       {screen === 'edit' && (
         <EditScreen split={split} onSave={async s => {
