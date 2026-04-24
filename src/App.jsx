@@ -3,6 +3,7 @@ import { supabase } from './utils/supabaseClient'
 import { migrateToSupabase } from './utils/migrateToSupabase'
 import { loadProgramFromSupabase, saveSessionTargets } from './utils/loadProgramFromSupabase'
 import { seedUserData } from './utils/seedUserData'
+import { createSessionRow, writeExerciseSets, markSessionComplete, resolveExerciseByName } from './utils/sessionSync'
 
 const MESO = 1
 const ANTHROPIC_KEY = import.meta.env.VITE_ANTHROPIC_KEY
@@ -559,6 +560,7 @@ function SessionScreen({
   sessionExercises, setSessionExercises,
   sessionScreen, setSessionScreen,
   sessionResult, setSessionResult,
+  supabaseSessionId,
 }) {
   const day = split[dayKey]
   const [tab, setTab] = useState('coach')
@@ -610,8 +612,11 @@ function SessionScreen({
       const msgs = allMsgs.slice(-8).map(m => ({ role: m.role, content: m.content }))
       const raw = await callClaude(buildCoachSys(day, sessionLogs, sessionExercises, currentCycle), msgs)
       let parsed
-      try { parsed = JSON.parse(raw.replace(/```json|```/g, '').trim()) }
-      catch (e) {
+      try {
+        const jsonMatch = raw.match(/\{[\s\S]*\}/)
+        const jsonStr = jsonMatch ? jsonMatch[0] : raw
+        parsed = JSON.parse(jsonStr.replace(/[\r\n]+/g, ' '))
+      } catch (e) {
         console.error('[send] JSON parse failed', e, raw)
         parsed = {
           message: "⚠️ I couldn't parse the coach response as JSON — your last message wasn't logged. Try rephrasing (e.g. \"log 3 sets of 10 at 100lbs\").",
@@ -624,18 +629,39 @@ function SessionScreen({
       let didLog = false
       for (const a of (parsed.actions || [])) {
         if (a.type === 'log_sets' && a.exercise_id) {
-          newLogs[a.exercise_id] = (a.sets || []).map(s => ({ ...s, type: 'straight' }))
+          const sets = (a.sets || []).map(s => ({ ...s, type: 'straight' }))
+          newLogs[a.exercise_id] = sets
           didLog = true
+          const ex = newEx.find(e => e.id === a.exercise_id)
+          if (ex?._exercise_id && supabaseSessionId) {
+            writeExerciseSets({ sessionId: supabaseSessionId, exerciseUuid: ex._exercise_id, sets })
+          }
         }
         if (a.type === 'log_myo' && a.exercise_id) {
           const la = [{ type: 'act', w: a.activation?.w, reps: a.activation?.reps }]
           for (let i = 0; i < (a.mini_sets ?? 4); i++) la.push({ type: 'mini', num: i + 1, w: a.activation?.w, reps: 5 })
           newLogs[a.exercise_id] = la
           didLog = true
+          const ex = newEx.find(e => e.id === a.exercise_id)
+          if (ex?._exercise_id && supabaseSessionId) {
+            writeExerciseSets({ sessionId: supabaseSessionId, exerciseUuid: ex._exercise_id, sets: la })
+          }
         }
         if (a.type === 'swap_exercise' && a.from_id) {
           const idx = newEx.findIndex(e => e.id === a.from_id)
-          if (idx >= 0) { newEx[idx] = { ...newEx[idx], name: a.to_name, w: null }; newLogs[a.from_id] = [{ type: 'swap' }] }
+          if (idx >= 0) {
+            // Try to resolve the new name against the master exercises table so future
+            // set_logs point at the correct exercise UUID. Fall back to the old UUID
+            // with the new label if resolution fails (network issue, unknown exercise).
+            const resolved = await resolveExerciseByName(a.to_name)
+            newEx[idx] = {
+              ...newEx[idx],
+              name: resolved?.name ?? a.to_name,
+              _exercise_id: resolved?.id ?? newEx[idx]._exercise_id,
+              w: null,
+            }
+            newLogs[a.from_id] = [{ type: 'swap' }]
+          }
         }
         if (a.type === 'complete_session') doComplete = true
       }
@@ -654,7 +680,9 @@ function SessionScreen({
     setSessionScreen('processing')
     try {
       const raw = await callClaude(PROG_SYS, [{ role: 'user', content: buildProgPrompt(day, finalLogs, finalEx, currentCycle) }], 1000)
-      const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim())
+      const jsonMatch = raw.match(/\{[\s\S]*\}/)
+      const jsonStr = jsonMatch ? jsonMatch[0] : raw
+      const parsed = JSON.parse(jsonStr.replace(/[\r\n]+/g, ' '))
       setSessionResult(parsed); setSessionScreen('results')
     } catch (e) {
       setSessionResult({ session_summary: `Error: ${e.message}`, targets: [], flags: [], next_cycle: currentCycle + 1 })
@@ -667,6 +695,34 @@ function SessionScreen({
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       <div style={{ width: 48, height: 48, borderRadius: '50%', border: `3px solid ${C.border}`, borderTopColor: C.acc, animation: 'spin .8s linear infinite' }} />
       <div style={{ fontSize: 18, color: C.sub, letterSpacing: 2, fontWeight: 'bold' }}>CALCULATING NEXT TARGETS...</div>
+    </div>
+  )
+
+  if (sessionScreen === 'results' && !(sessionResult?.targets?.length > 0)) return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: '28px 20px 40px', background: C.bg }}>
+      <div style={{ fontSize: 15, color: C.orange, letterSpacing: 3, marginBottom: 8, fontWeight: 'bold' }}>
+        COULDN'T CALCULATE NEXT TARGETS
+      </div>
+      <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1.2, marginBottom: 16, color: C.text }}>
+        Something went wrong — your workout is safe.
+      </div>
+      <div style={{ background: '#FFF6E8', border: `0.5px solid #E8C98A`, borderRadius: 12, padding: '14px 18px', marginBottom: 20 }}>
+        <div style={{ fontSize: 15, color: C.orange, letterSpacing: 1, marginBottom: 6, fontWeight: 'bold' }}>WHAT HAPPENED</div>
+        <div style={{ fontSize: 15, color: C.text, lineHeight: 1.6 }}>
+          {sessionResult?.session_summary || 'The coach response couldn\'t be parsed.'}
+        </div>
+        <div style={{ fontSize: 14, color: C.sub, marginTop: 10, lineHeight: 1.5 }}>
+          Your logged sets are still saved. Tap RETRY to try the calculation again, or BACK TO SESSION to keep editing.
+        </div>
+      </div>
+      <button onClick={() => runProg(sessionLogs, sessionExercises)}
+        style={{ width: '100%', padding: 18, borderRadius: 14, background: C.acc, color: '#fff', fontSize: 18, fontWeight: 700, letterSpacing: 1, border: 'none', cursor: 'pointer', fontFamily: 'inherit', marginBottom: 10 }}>
+        RETRY
+      </button>
+      <button onClick={() => setSessionScreen('session')}
+        style={{ width: '100%', padding: 14, borderRadius: 14, background: 'none', color: C.sub, fontSize: 15, fontWeight: 700, letterSpacing: 1, border: `0.5px solid ${C.border}`, cursor: 'pointer', fontFamily: 'inherit' }}>
+        BACK TO SESSION
+      </button>
     </div>
   )
 
@@ -957,20 +1013,22 @@ export default function App() {
   const [sessionExercises, setSessionExercisesRaw] = useState(savedSession?.exercises ?? [])
   const [sessionScreen, setSessionScreenRaw]       = useState(savedSession?.sessionScreen ?? 'session')
   const [sessionResult, setSessionResultRaw]       = useState(savedSession?.result ?? null)
+  const [supabaseSessionId, setSupabaseSessionIdRaw] = useState(savedSession?.supabaseSessionId ?? null)
 
   function persist(patch) {
-    saveSessionState({ dayKey, logs: sessionLogs, chat: sessionChat, exercises: sessionExercises, sessionScreen, result: sessionResult, ...patch })
+    saveSessionState({ dayKey, logs: sessionLogs, chat: sessionChat, exercises: sessionExercises, sessionScreen, result: sessionResult, supabaseSessionId, ...patch })
   }
   function setSessionLogs(v)        { setSessionLogsRaw(v);        persist({ logs: v }) }
   function setSessionChat(v)        { setSessionChatRaw(v);        persist({ chat: v }) }
   function setSessionExercises(v)   { setSessionExercisesRaw(v);   persist({ exercises: v }) }
   function setSessionScreen(v)      { setSessionScreenRaw(v);      persist({ sessionScreen: v }) }
   function setSessionResult(v)      { setSessionResultRaw(v);      persist({ result: v }) }
+  function setSupabaseSessionId(v)  { setSupabaseSessionIdRaw(v);  persist({ supabaseSessionId: v }) }
 
   const hasActiveSession = !!dayKey && sessionExercises.length > 0
   const currentCycle = dayKey ? (progress[dayKey]?.week ?? (dayKey === 'day_5' ? 1 : 3)) : 3
 
-  function startSession(key) {
+  async function startSession(key) {
     const day = split[key]
     const cycle = progress[key]?.week ?? (key === 'day_5' ? 1 : 3)
     const freshExercises = JSON.parse(JSON.stringify(day.exercises))
@@ -985,9 +1043,23 @@ export default function App() {
     setSessionExercisesRaw(freshExercises)
     setSessionScreenRaw('session')
     setSessionResultRaw(null)
-    saveSessionState({ dayKey: key, logs: {}, chat: freshChat, exercises: freshExercises, sessionScreen: 'session', result: null })
+    setSupabaseSessionIdRaw(null)
+    saveSessionState({ dayKey: key, logs: {}, chat: freshChat, exercises: freshExercises, sessionScreen: 'session', result: null, supabaseSessionId: null })
     setScreen('session')
     acquireWakeLock()
+
+    // Durable backup: create a Supabase session row so set logs have a parent.
+    // Best-effort — if this fails, the session still works via localStorage.
+    const user = supabaseUserRef.current ?? await getSupabaseUser()
+    if (user) {
+      const newId = await createSessionRow({
+        userId: user.id,
+        splitDayId: day._split_day_id,
+        weekNumber: cycle,
+        mesocycle: MESO,
+      })
+      if (newId) setSupabaseSessionId(newId)
+    }
   }
 
   async function completeSession() {
@@ -1031,6 +1103,8 @@ export default function App() {
         }
       }
     }
+    if (supabaseSessionId) markSessionComplete(supabaseSessionId)
+
     const newEntry = {
       date: new Date().toISOString(),
       dayKey,
@@ -1050,6 +1124,7 @@ export default function App() {
     setSessionExercisesRaw([])
     setSessionScreenRaw('session')
     setSessionResultRaw(null)
+    setSupabaseSessionIdRaw(null)
     setScreen('home')
   }
 
@@ -1078,6 +1153,7 @@ export default function App() {
           sessionExercises={sessionExercises} setSessionExercises={setSessionExercises}
           sessionScreen={sessionScreen}       setSessionScreen={setSessionScreen}
           sessionResult={sessionResult}       setSessionResult={setSessionResult}
+          supabaseSessionId={supabaseSessionId}
         />
       )}
     </div>
