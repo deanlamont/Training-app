@@ -97,6 +97,43 @@ export async function resolveExerciseByName(name) {
 }
 
 /**
+ * Fetches the most recent session for a given split_day (by created_at desc) along
+ * with all its set_logs. Used for recovery when local state was cleared before a
+ * successful progression calculation.
+ * Returns { sessionId, setLogs } or null if nothing found.
+ */
+export async function fetchLatestSessionData(userId, splitDayId) {
+  if (!supabase || !userId || !splitDayId) return null
+  try {
+    const { data: sessionsData } = await supabase
+      .from('sessions')
+      .select('id, week_number, mesocycle')
+      .eq('user_id', userId)
+      .eq('split_day_id', splitDayId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+    const latest = sessionsData?.[0]
+    if (!latest) return null
+
+    const { data: logs } = await supabase
+      .from('set_logs')
+      .select('*')
+      .eq('session_id', latest.id)
+      .order('set_number', { ascending: true })
+
+    return {
+      sessionId: latest.id,
+      weekNumber: latest.week_number,
+      mesocycle: latest.mesocycle,
+      setLogs: logs ?? [],
+    }
+  } catch (e) {
+    console.error('[fetchLatestSessionData] failed', e)
+    return null
+  }
+}
+
+/**
  * Marks a session as complete. Non-blocking — errors are logged, not thrown.
  */
 export async function markSessionComplete(sessionId) {

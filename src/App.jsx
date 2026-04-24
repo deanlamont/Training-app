@@ -3,7 +3,7 @@ import { supabase } from './utils/supabaseClient'
 import { migrateToSupabase } from './utils/migrateToSupabase'
 import { loadProgramFromSupabase, saveSessionTargets } from './utils/loadProgramFromSupabase'
 import { seedUserData } from './utils/seedUserData'
-import { createSessionRow, writeExerciseSets, markSessionComplete, resolveExerciseByName } from './utils/sessionSync'
+import { createSessionRow, writeExerciseSets, markSessionComplete, resolveExerciseByName, fetchLatestSessionData } from './utils/sessionSync'
 
 const MESO = 1
 const ANTHROPIC_KEY = import.meta.env.VITE_ANTHROPIC_KEY
@@ -239,7 +239,7 @@ async function callClaude(system, messages, maxTokens = 400) {
 }
 
 // ─── Home Screen ──────────────────────────────────────────────────────────────
-function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSession, activeSessionKey, onResumeSession }) {
+function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSession, activeSessionKey, onResumeSession, onRecover }) {
   const days = Object.values(split)
   const mainDays = days.filter(d => d.key !== 'day_5')
   const optDay = days.find(d => d.key === 'day_5')
@@ -271,19 +271,28 @@ function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSessio
             const date = new Date(h.date)
             const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
             const isExpanded = expandedIdx === i
+            const hadError = typeof h.summary === 'string' && h.summary.startsWith('Error:')
             return (
               <div key={i} onClick={() => setExpandedIdx(isExpanded ? null : i)}
-                style={{ background: C.surface, border: `0.5px solid ${C.border}`, borderRadius: 12, padding: '12px 16px', marginBottom: 8, cursor: h.summary ? 'pointer' : 'default' }}>
+                style={{ background: C.surface, border: `0.5px solid ${hadError ? '#E8C98A' : C.border}`, borderRadius: 12, padding: '12px 16px', marginBottom: 8, cursor: h.summary ? 'pointer' : 'default' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ fontSize: 15, fontWeight: 600, color: C.text }}>{h.label}</div>
                   <div style={{ fontSize: 15, color: C.muted }}>{dateStr}</div>
                 </div>
                 <div style={{ display: 'flex', gap: 12, marginTop: 4, alignItems: 'center' }}>
-                  <div style={{ fontSize: 15, color: C.acc, fontWeight: 'bold', letterSpacing: 1 }}>CYCLE {h.week}</div>
+                  <div style={{ fontSize: 15, color: hadError ? C.orange : C.acc, fontWeight: 'bold', letterSpacing: 1 }}>
+                    {hadError ? 'NEEDS RECOMPUTE' : `CYCLE ${h.week}`}
+                  </div>
                   {h.summary && <div style={{ fontSize: 15, color: C.muted }}>{isExpanded ? '▲' : '▼ coach note'}</div>}
                 </div>
                 {isExpanded && h.summary && (
                   <div style={{ fontSize: 15, color: C.sub, marginTop: 8, lineHeight: 1.5, borderTop: `0.5px solid ${C.border}`, paddingTop: 8 }}>{h.summary}</div>
+                )}
+                {hadError && onRecover && (
+                  <button onClick={(e) => { e.stopPropagation(); onRecover(h.dayKey) }}
+                    style={{ marginTop: 10, width: '100%', padding: '10px 0', background: C.acc, border: 'none', borderRadius: 10, color: '#fff', fontSize: 14, fontWeight: 700, letterSpacing: 2, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    ⟳ RECOMPUTE FROM CLOUD
+                  </button>
                 )}
               </div>
             )
@@ -561,6 +570,7 @@ function SessionScreen({
   sessionScreen, setSessionScreen,
   sessionResult, setSessionResult,
   supabaseSessionId,
+  runProgression,
 }) {
   const day = split[dayKey]
   const [tab, setTab] = useState('coach')
@@ -677,29 +687,7 @@ function SessionScreen({
   }
 
   async function runProg(finalLogs, finalEx) {
-    setSessionScreen('processing')
-    const userMsg = { role: 'user', content: buildProgPrompt(day, finalLogs, finalEx, currentCycle) }
-    // Try once, then retry once with a fresh call — LLMs occasionally emit malformed JSON
-    // (truncated arrays, trailing commas, unescaped newlines). 3000 tokens is enough
-    // headroom for ~15 exercises worth of targets + a short summary.
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const raw = await callClaude(PROG_SYS, [userMsg], 3000)
-        const jsonMatch = raw.match(/\{[\s\S]*\}/)
-        const jsonStr = (jsonMatch ? jsonMatch[0] : raw)
-          .replace(/[\r\n]+/g, ' ')
-          .replace(/,(\s*[}\]])/g, '$1')  // strip trailing commas before } or ]
-        const parsed = JSON.parse(jsonStr)
-        setSessionResult(parsed); setSessionScreen('results')
-        return
-      } catch (e) {
-        console.error(`[runProg] attempt ${attempt + 1} failed`, e)
-        if (attempt === 1) {
-          setSessionResult({ session_summary: `Error: ${e.message}`, targets: [], flags: [], next_cycle: currentCycle + 1 })
-          setSessionScreen('results')
-        }
-      }
-    }
+    await runProgression(day, finalLogs, finalEx, currentCycle)
   }
 
   if (sessionScreen === 'processing') return (
@@ -1040,6 +1028,81 @@ export default function App() {
   const hasActiveSession = !!dayKey && sessionExercises.length > 0
   const currentCycle = dayKey ? (progress[dayKey]?.week ?? (dayKey === 'day_5' ? 1 : 3)) : 3
 
+  // Shared progression-calculation routine — used by both live session completion
+  // and cloud-recovery on the home screen. Handles retries, JSON sanitization, and
+  // sets the results state.
+  async function runProgression(dayObj, finalLogs, finalEx, cycle) {
+    setSessionScreenRaw('processing')
+    saveSessionState({ dayKey: dayObj?.key, logs: finalLogs, chat: sessionChat, exercises: finalEx, sessionScreen: 'processing', result: null, supabaseSessionId })
+    const userMsg = { role: 'user', content: buildProgPrompt(dayObj, finalLogs, finalEx, cycle) }
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const raw = await callClaude(PROG_SYS, [userMsg], 3000)
+        const jsonMatch = raw.match(/\{[\s\S]*\}/)
+        const jsonStr = (jsonMatch ? jsonMatch[0] : raw)
+          .replace(/[\r\n]+/g, ' ')
+          .replace(/,(\s*[}\]])/g, '$1')
+        const parsed = JSON.parse(jsonStr)
+        setSessionResult(parsed); setSessionScreen('results')
+        return
+      } catch (e) {
+        console.error(`[runProgression] attempt ${attempt + 1} failed`, e)
+        if (attempt === 1) {
+          setSessionResult({ session_summary: `Error: ${e.message}`, targets: [], flags: [], next_cycle: cycle + 1 })
+          setSessionScreen('results')
+        }
+      }
+    }
+  }
+
+  // Pulls the most recent Supabase session for a given day, reconstructs the logs
+  // in the shape the session screen expects, and kicks off progression calculation.
+  // Lets the user finish a workout whose local state was lost (e.g. after a parse
+  // error on the old build cleared the session).
+  async function recoverDay(key) {
+    const user = supabaseUserRef.current ?? await getSupabaseUser()
+    if (!user) { alert('Not connected to cloud — can\'t recover.'); return }
+    const splitDay = split[key]
+    if (!splitDay?._split_day_id) { alert('Day not found in your program.'); return }
+
+    const data = await fetchLatestSessionData(user.id, splitDay._split_day_id)
+    if (!data || !data.setLogs?.length) {
+      alert(`No cloud set logs found for ${splitDay.label}.`)
+      return
+    }
+
+    // Rebuild sessionLogs keyed by the short_id the coach uses
+    const exercises = splitDay.exercises
+    const logsByShortId = {}
+    for (const log of data.setLogs) {
+      const ex = exercises.find(e => e._exercise_id === log.exercise_id)
+      if (!ex) continue
+      if (!logsByShortId[ex.id]) logsByShortId[ex.id] = []
+      const weight = Number(log.weight)
+      if (log.set_type === 'myo_activation') {
+        logsByShortId[ex.id].push({ type: 'act', w: weight, reps: log.reps, rir: log.rir })
+      } else if (log.set_type === 'myo_mini') {
+        logsByShortId[ex.id].push({ type: 'mini', num: log.set_number, w: weight, reps: log.reps })
+      } else {
+        logsByShortId[ex.id].push({ num: log.set_number, w: weight, reps: log.reps, rir: log.rir })
+      }
+    }
+
+    const cycle = progress[key]?.week ?? 3
+    setDayKey(key)
+    setSessionLogsRaw(logsByShortId)
+    setSessionExercisesRaw(exercises)
+    setSessionChatRaw([])
+    setSessionResultRaw(null)
+    setSupabaseSessionIdRaw(data.sessionId)
+    saveSessionState({
+      dayKey: key, logs: logsByShortId, chat: [], exercises,
+      sessionScreen: 'processing', result: null, supabaseSessionId: data.sessionId,
+    })
+    setScreen('session')
+    await runProgression(splitDay, logsByShortId, exercises, cycle)
+  }
+
   async function startSession(key) {
     const day = split[key]
     const cycle = progress[key]?.week ?? (key === 'day_5' ? 1 : 3)
@@ -1144,7 +1207,8 @@ export default function App() {
     <div style={{ maxWidth: 480, margin: '0 auto', height: '100dvh', background: C.bg, display: 'flex', flexDirection: 'column', color: C.text, fontFamily: '-apple-system, Arial, sans-serif' }}>
       {screen === 'home' && (
         <HomeScreen split={split} progress={progress} history={history} onStart={startSession} onEdit={() => setScreen('edit')}
-          hasActiveSession={hasActiveSession} activeSessionKey={dayKey} onResumeSession={() => setScreen('session')} />
+          hasActiveSession={hasActiveSession} activeSessionKey={dayKey} onResumeSession={() => setScreen('session')}
+          onRecover={recoverDay} />
       )}
       {screen === 'edit' && (
         <EditScreen split={split} onSave={async s => {
@@ -1166,6 +1230,7 @@ export default function App() {
           sessionScreen={sessionScreen}       setSessionScreen={setSessionScreen}
           sessionResult={sessionResult}       setSessionResult={setSessionResult}
           supabaseSessionId={supabaseSessionId}
+          runProgression={runProgression}
         />
       )}
     </div>
