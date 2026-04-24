@@ -3,153 +3,108 @@ import { supabase } from './utils/supabaseClient'
 import { migrateToSupabase } from './utils/migrateToSupabase'
 import { loadProgramFromSupabase, saveSessionTargets } from './utils/loadProgramFromSupabase'
 import { seedUserData } from './utils/seedUserData'
-import { createSessionRow, writeExerciseSets, markSessionComplete, resolveExerciseByName, fetchLatestSessionData, fetchMostRecentSessionAny } from './utils/sessionSync'
+import {
+  createSessionRow,
+  writeExerciseSets,
+  markSessionComplete,
+  fetchLatestSessionData,
+  fetchMostRecentSessionAny,
+} from './utils/sessionSync'
+import { computeNextTargets } from './utils/progression'
 
-const APP_VERSION = 'v2026-04-24e'  // bump on every deploy — visible on home to verify cache busted
-
+const APP_VERSION = 'v2026-04-24-rebuild'
 const MESO = 1
-const ANTHROPIC_KEY = import.meta.env.VITE_ANTHROPIC_KEY
 
+// ─── Storage helpers ─────────────────────────────────────────────────────────
 const HISTORY_KEY = 'swolebro_history'
-function loadHistory() {
-  try { const s = localStorage.getItem(HISTORY_KEY); if (s) return JSON.parse(s) } catch {}
-  return []
-}
-function saveHistory(h) {
-  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(h)) }
-  catch (e) { console.error('[saveHistory] localStorage write failed', e) }
-}
-
 const PROGRESS_KEY = 'swolebro_progress'
-const DEFAULT_PROGRESS = {
-  push_a: { week: 4 },
-  push_b: { week: 4 },
-  pull_a: { week: 4 },
-  pull_b: { week: 4 },
-  day_5:  { week: 4 },
-}
-function loadProgress() {
-  try { const s = localStorage.getItem(PROGRESS_KEY); if (s) return JSON.parse(s) } catch {}
-  return { ...DEFAULT_PROGRESS }
-}
-function saveProgress(p) {
-  try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(p)) }
-  catch (e) { console.error('[saveProgress] localStorage write failed', e) }
-}
-
-// ─── Cream / white theme ─────────────────────────────────────────────────────
-const C = {
-  bg:       '#F5F0E8',
-  surface:  '#FFFFFF',
-  border:   '#D8D3C8',
-  text:     '#1A1A1A',
-  sub:      '#555555',
-  muted:    '#999999',
-  acc:      '#2D6A4F',   // deep green accent
-  accLight: '#EAF3DE',
-  blue:     '#185FA5',
-  orange:   '#854F0B',
-  green:    '#27500A',
-  innerBg:  '#F9F6F1',
-}
-
-const DEFAULT_SPLIT = {
-  push_a: {
-    key: 'push_a', label: 'Push A', sub: 'Incline Chest · Shoulders · Triceps · Legs',
-    exercises: [
-      { id: 'pa_inc',      name: 'Nautilus PL Incline Bench',      type: 'straight', sets: 4, min: 8,  max: 8,  w: 90,   note: '/side' },
-      { id: 'pa_db_inc',   name: 'DB 45 Degree Incline',           type: 'straight', sets: 3, min: 10, max: 12, w: 55 },
-      { id: 'pa_seat_pr',  name: 'Nautilus PL Seated Press',       type: 'straight', sets: 3, min: 10, max: 10, w: 60,   note: '/side' },
-      { id: 'pa_fly',      name: 'Arsenal Fly Machine',            type: 'myo',      w: 30 },
-      { id: 'pa_lat_r',    name: 'Arsenal Lateral Raises',         type: 'myo',      w: 40 },
-      { id: 'pa_rope_oh',  name: 'Cable Rope Overhead Extension',  type: 'straight', sets: 3, min: 12, max: 12, w: 45 },
-      { id: 'pa_pushdn',   name: 'Tricep Pushdowns',               type: 'myo',      w: 54 },
-      { id: 'pa_leg_pr',   name: 'Nautilus Xpload Leg Press',      type: 'straight', sets: 3, min: 10, max: 10, w: 135,  note: '/side' },
-      { id: 'pa_leg_ext',  name: 'Nautilus Leg Extensions',        type: 'myo',      w: 120 },
-      { id: 'pa_woodchop', name: 'Cable Woodchop',                 type: 'straight', sets: 2, min: 12, max: 12, w: null, note: '/side' },
-    ]
-  },
-  push_b: {
-    key: 'push_b', label: 'Push B', sub: 'Flat Chest · Shoulders · Triceps · Legs',
-    exercises: [
-      { id: 'pb_flat',     name: 'Nautilus PL Flat Bench',         type: 'straight', sets: 4, min: 8,  max: 10, w: 60,   note: '/side' },
-      { id: 'pb_db_flat',  name: 'DB Flat Bench',                  type: 'straight', sets: 3, min: 10, max: 12, w: 65 },
-      { id: 'pb_ohp',      name: 'Standing Barbell OHP',           type: 'straight', sets: 3, min: 8,  max: 10, w: 25 },
-      { id: 'pb_fly',      name: 'Arsenal Fly Machine',            type: 'myo',      w: 30 },
-      { id: 'pb_lat_r',    name: 'Arsenal Lateral Raises',         type: 'myo',      w: 30 },
-      { id: 'pb_rope_oh',  name: 'Cable Rope Overhead Extension',  type: 'myo',      w: 45 },
-      { id: 'pb_squat',    name: 'Bodybuilder Squat Machine',      type: 'straight', sets: 3, min: 8,  max: 10, w: 90,   note: '/side' },
-      { id: 'pb_leg_ext',  name: 'Nautilus Leg Extensions',        type: 'myo',      w: 120 },
-      { id: 'pb_woodchop', name: 'Cable Woodchop',                 type: 'straight', sets: 2, min: 12, max: 12, w: null, note: '/side' },
-    ]
-  },
-  pull_a: {
-    key: 'pull_a', label: 'Pull A', sub: 'Back Width · Biceps · Hamstrings',
-    exercises: [
-      { id: 'pla_pd_over', name: 'Nautilus Lat Pulldown overhand',    type: 'straight', sets: 4, min: 8,  max: 10, w: 121 },
-      { id: 'pla_row_mid', name: 'Nautilus Chest Supported Row Mid',  type: 'straight', sets: 3, min: 10, max: 12, w: 140 },
-      { id: 'pla_fp',      name: 'Cable Face Pulls',                  type: 'myo',      w: 43 },
-      { id: 'pla_lat_pr',  name: 'Cable Lat Prayers',                 type: 'myo',      w: 58.5 },
-      { id: 'pla_cc',      name: 'Cable Curls',                       type: 'myo',      w: 43 },
-      { id: 'pla_hammer',  name: 'Hammer Curls',                      type: 'straight', sets: 3, min: 12, max: 12, w: 35 },
-      { id: 'pla_rdl',     name: 'Romanian Deadlift',                 type: 'straight', sets: 3, min: 8,  max: 8,  w: 135 },
-      { id: 'pla_ham',     name: 'Nautilus Hamstring Curls',          type: 'myo',      w: 80 },
-      { id: 'pla_pallof',  name: 'Pallof Press',                      type: 'straight', sets: 2, min: 12, max: 12, w: null, note: '/side' },
-    ]
-  },
-  pull_b: {
-    key: 'pull_b', label: 'Pull B', sub: 'Upper Back · Biceps · Hamstrings',
-    exercises: [
-      { id: 'plb_pd_under', name: 'Nautilus Lat Pulldown underhand',    type: 'straight', sets: 4, min: 8,  max: 12, w: 121 },
-      { id: 'plb_row_high', name: 'Nautilus Chest Supported Row High',  type: 'straight', sets: 3, min: 10, max: 15, w: 50 },
-      { id: 'plb_fp',       name: 'Cable Face Pulls',                   type: 'myo',      w: 58.5 },
-      { id: 'plb_cs_rd',    name: 'Chest Supported Rear Delt Raises',   type: 'myo',      w: null },
-      { id: 'plb_inc_curl', name: 'Incline DB Curls',                   type: 'myo',      w: 20 },
-      { id: 'plb_cc',       name: 'Cable Curls',                        type: 'straight', sets: 3, min: 12, max: 12, w: 38.5 },
-      { id: 'plb_ham',      name: 'Nautilus Hamstring Curls',           type: 'myo',      w: 80 },
-      { id: 'plb_hip_ab',   name: 'Hip Abductor Machine',               type: 'straight', sets: 3, min: 15, max: 15, w: null },
-      { id: 'plb_pallof',   name: 'Pallof Press',                       type: 'straight', sets: 2, min: 12, max: 12, w: null, note: '/side' },
-    ]
-  },
-  day_5: {
-    key: 'day_5', label: 'Day 5', sub: 'Arms · Core (Optional)',
-    exercises: [
-      { id: 'd5_ez',        name: 'EZ Bar Curls',                   type: 'straight', sets: 4, min: 10, max: 10, w: null },
-      { id: 'd5_inc_curl',  name: 'Incline DB Curls',               type: 'myo',      w: null },
-      { id: 'd5_pushdn',    name: 'Tricep Pushdowns',               type: 'myo',      w: null },
-      { id: 'd5_rope_oh',   name: 'Cable Rope Overhead Extension',  type: 'straight', sets: 3, min: 12, max: 12, w: null },
-      { id: 'd5_lat_r',     name: 'Arsenal Lateral Raises',         type: 'myo',      w: null },
-      { id: 'd5_ab_wheel',  name: 'Ab Wheel Rollout',               type: 'straight', sets: 3, min: 10, max: 10, w: null },
-      { id: 'd5_leg_raise', name: 'Hanging Leg Raise',              type: 'straight', sets: 3, min: 12, max: 12, w: null },
-    ]
-  },
-}
-
 const PROGRAM_KEY = 'swolebro_program'
 const SESSION_KEY = 'swolebro_session'
 
-function loadProgram() {
-  try { const s = localStorage.getItem(PROGRAM_KEY); if (s) return JSON.parse(s) } catch {}
-  return JSON.parse(JSON.stringify(DEFAULT_SPLIT))
+const DEFAULT_PROGRESS = {
+  push_a: { week: 4 }, push_b: { week: 4 },
+  pull_a: { week: 4 }, pull_b: { week: 4 },
+  day_5:  { week: 4 },
 }
-function saveProgram(split) {
-  try { localStorage.setItem(PROGRAM_KEY, JSON.stringify(split)) }
-  catch (e) { console.error('[saveProgram] localStorage write failed', e) }
+
+function safeParse(str, fallback) {
+  try { return str ? JSON.parse(str) : fallback } catch { return fallback }
 }
-function loadSessionState() {
-  try { const s = localStorage.getItem(SESSION_KEY); if (s) return JSON.parse(s) }
-  catch (e) {
-    console.error('[loadSessionState] Corrupted session data, clearing', e)
-    try { localStorage.removeItem(SESSION_KEY) } catch {}
-  }
-  return null
+function loadHistory()         { return safeParse(localStorage.getItem(HISTORY_KEY), []) }
+function saveHistory(h)        { try { localStorage.setItem(HISTORY_KEY, JSON.stringify(h)) } catch (e) { console.error(e) } }
+function loadProgress()        { return safeParse(localStorage.getItem(PROGRESS_KEY), { ...DEFAULT_PROGRESS }) }
+function saveProgress(p)       { try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(p)) } catch (e) { console.error(e) } }
+function loadProgram()         { return safeParse(localStorage.getItem(PROGRAM_KEY), null) ?? JSON.parse(JSON.stringify(DEFAULT_SPLIT)) }
+function saveProgram(s)        { try { localStorage.setItem(PROGRAM_KEY, JSON.stringify(s)) } catch (e) { console.error(e) } }
+function loadSessionState()    { return safeParse(localStorage.getItem(SESSION_KEY), null) }
+function saveSessionState(s)   { try { localStorage.setItem(SESSION_KEY, JSON.stringify(s)) } catch (e) { console.error(e) } }
+function clearSessionState()   { try { localStorage.removeItem(SESSION_KEY) } catch {} }
+
+// ─── Theme ───────────────────────────────────────────────────────────────────
+const C = {
+  bg: '#F5F0E8', surface: '#FFFFFF', border: '#D8D3C8',
+  text: '#1A1A1A', sub: '#555555', muted: '#999999',
+  acc: '#2D6A4F', accLight: '#EAF3DE',
+  blue: '#185FA5', orange: '#854F0B', red: '#B04040',
+  innerBg: '#F9F6F1',
 }
-function saveSessionState(state) {
-  try { localStorage.setItem(SESSION_KEY, JSON.stringify(state)) }
-  catch (e) { console.error('[saveSessionState] localStorage write failed', e) }
-}
-function clearSessionState() {
-  try { localStorage.removeItem(SESSION_KEY) } catch {}
+
+// ─── Default program (used on fresh install before Supabase seed) ───────────
+const DEFAULT_SPLIT = {
+  push_a: { key: 'push_a', label: 'Push A', sub: 'Incline Chest · Shoulders · Triceps · Legs', exercises: [
+    { id: 'pa_inc',      name: 'Nautilus PL Incline Bench',      type: 'straight', sets: 4, min: 8,  max: 8,  w: 90,   note: '/side' },
+    { id: 'pa_db_inc',   name: 'DB 45 Degree Incline',           type: 'straight', sets: 3, min: 10, max: 12, w: 55 },
+    { id: 'pa_seat_pr',  name: 'Nautilus PL Seated Press',       type: 'straight', sets: 3, min: 10, max: 10, w: 60,   note: '/side' },
+    { id: 'pa_fly',      name: 'Arsenal Fly Machine',            type: 'myo',      w: 30 },
+    { id: 'pa_lat_r',    name: 'Arsenal Lateral Raises',         type: 'myo',      w: 40 },
+    { id: 'pa_rope_oh',  name: 'Cable Rope Overhead Extension',  type: 'straight', sets: 3, min: 12, max: 12, w: 45 },
+    { id: 'pa_pushdn',   name: 'Tricep Pushdowns',               type: 'myo',      w: 54 },
+    { id: 'pa_leg_pr',   name: 'Nautilus Xpload Leg Press',      type: 'straight', sets: 3, min: 10, max: 10, w: 135,  note: '/side' },
+    { id: 'pa_leg_ext',  name: 'Nautilus Leg Extensions',        type: 'myo',      w: 120 },
+    { id: 'pa_woodchop', name: 'Cable Woodchop',                 type: 'straight', sets: 2, min: 12, max: 12, w: null, note: '/side' },
+  ]},
+  push_b: { key: 'push_b', label: 'Push B', sub: 'Flat Chest · Shoulders · Triceps · Legs', exercises: [
+    { id: 'pb_flat',     name: 'Nautilus PL Flat Bench',         type: 'straight', sets: 4, min: 8,  max: 10, w: 60,   note: '/side' },
+    { id: 'pb_db_flat',  name: 'DB Flat Bench',                  type: 'straight', sets: 3, min: 10, max: 12, w: 65 },
+    { id: 'pb_ohp',      name: 'Standing Barbell OHP',           type: 'straight', sets: 3, min: 8,  max: 10, w: 25 },
+    { id: 'pb_fly',      name: 'Arsenal Fly Machine',            type: 'myo',      w: 30 },
+    { id: 'pb_lat_r',    name: 'Arsenal Lateral Raises',         type: 'myo',      w: 30 },
+    { id: 'pb_rope_oh',  name: 'Cable Rope Overhead Extension',  type: 'myo',      w: 45 },
+    { id: 'pb_squat',    name: 'Bodybuilder Squat Machine',      type: 'straight', sets: 3, min: 8,  max: 10, w: 90,   note: '/side' },
+    { id: 'pb_leg_ext',  name: 'Nautilus Leg Extensions',        type: 'myo',      w: 120 },
+    { id: 'pb_woodchop', name: 'Cable Woodchop',                 type: 'straight', sets: 2, min: 12, max: 12, w: null, note: '/side' },
+  ]},
+  pull_a: { key: 'pull_a', label: 'Pull A', sub: 'Back Width · Biceps · Hamstrings', exercises: [
+    { id: 'pla_pd_over', name: 'Nautilus Lat Pulldown overhand',    type: 'straight', sets: 4, min: 8,  max: 10, w: 121 },
+    { id: 'pla_row_mid', name: 'Nautilus Chest Supported Row Mid',  type: 'straight', sets: 3, min: 10, max: 12, w: 140 },
+    { id: 'pla_fp',      name: 'Cable Face Pulls',                  type: 'myo',      w: 43 },
+    { id: 'pla_lat_pr',  name: 'Cable Lat Prayers',                 type: 'myo',      w: 58.5 },
+    { id: 'pla_cc',      name: 'Cable Curls',                       type: 'myo',      w: 43 },
+    { id: 'pla_hammer',  name: 'Hammer Curls',                      type: 'straight', sets: 3, min: 12, max: 12, w: 35 },
+    { id: 'pla_rdl',     name: 'Romanian Deadlift',                 type: 'straight', sets: 3, min: 8,  max: 8,  w: 135 },
+    { id: 'pla_ham',     name: 'Nautilus Hamstring Curls',          type: 'myo',      w: 80 },
+    { id: 'pla_pallof',  name: 'Pallof Press',                      type: 'straight', sets: 2, min: 12, max: 12, w: null, note: '/side' },
+  ]},
+  pull_b: { key: 'pull_b', label: 'Pull B', sub: 'Upper Back · Biceps · Hamstrings', exercises: [
+    { id: 'plb_pd_under', name: 'Nautilus Lat Pulldown underhand',    type: 'straight', sets: 4, min: 8,  max: 12, w: 121 },
+    { id: 'plb_row_high', name: 'Nautilus Chest Supported Row High',  type: 'straight', sets: 3, min: 10, max: 15, w: 50 },
+    { id: 'plb_fp',       name: 'Cable Face Pulls',                   type: 'myo',      w: 58.5 },
+    { id: 'plb_cs_rd',    name: 'Chest Supported Rear Delt Raises',   type: 'myo',      w: null },
+    { id: 'plb_inc_curl', name: 'Incline DB Curls',                   type: 'myo',      w: 20 },
+    { id: 'plb_cc',       name: 'Cable Curls',                        type: 'straight', sets: 3, min: 12, max: 12, w: 38.5 },
+    { id: 'plb_ham',      name: 'Nautilus Hamstring Curls',           type: 'myo',      w: 80 },
+    { id: 'plb_hip_ab',   name: 'Hip Abductor Machine',               type: 'straight', sets: 3, min: 15, max: 15, w: null },
+    { id: 'plb_pallof',   name: 'Pallof Press',                       type: 'straight', sets: 2, min: 12, max: 12, w: null, note: '/side' },
+  ]},
+  day_5: { key: 'day_5', label: 'Day 5', sub: 'Arms · Core (Optional)', exercises: [
+    { id: 'd5_ez',        name: 'EZ Bar Curls',                   type: 'straight', sets: 4, min: 10, max: 10, w: null },
+    { id: 'd5_inc_curl',  name: 'Incline DB Curls',               type: 'myo',      w: null },
+    { id: 'd5_pushdn',    name: 'Tricep Pushdowns',               type: 'myo',      w: null },
+    { id: 'd5_rope_oh',   name: 'Cable Rope Overhead Extension',  type: 'straight', sets: 3, min: 12, max: 12, w: null },
+    { id: 'd5_lat_r',     name: 'Arsenal Lateral Raises',         type: 'myo',      w: null },
+    { id: 'd5_ab_wheel',  name: 'Ab Wheel Rollout',               type: 'straight', sets: 3, min: 10, max: 10, w: null },
+    { id: 'd5_leg_raise', name: 'Hanging Leg Raise',              type: 'straight', sets: 3, min: 12, max: 12, w: null },
+  ]},
 }
 
 function fmt(n) {
@@ -157,91 +112,18 @@ function fmt(n) {
   return Number.isInteger(n) ? String(n) : parseFloat(n.toFixed(1)).toString()
 }
 
-function buildCoachSys(day, logs, exercises, currentCycle) {
-  const list = exercises.map((ex, i) => {
-    const done = (logs[ex.id] || []).length > 0
-    const t = ex.type === 'straight'
-      ? `${ex.sets}x${ex.min}${ex.max !== ex.min ? '-' + ex.max : ''} @ ${ex.w ?? 'TBD'}lb${ex.note ?? ''}`
-      : `Myo @ ${ex.w ?? 'TBD'}lb`
-    return `${i + 1}. [${ex.id}] ${ex.name} — ${ex.type.toUpperCase()} — ${t}${done ? ' [LOGGED]' : ''}`
-  }).join('\n')
-  return `You are a concise RP Strength coach tracking a live gym session. Be brief — 1-2 sentences max.
-
-SESSION: ${day.label} | Cycle ${currentCycle} | Meso ${MESO}
-EXERCISES:
-${list}
-
-Log what athlete tells you. When they say done/finished -> fire complete_session.
-Always return ONLY valid JSON, no markdown:
-{"message":"<response>","actions":[]}
-
-Actions:
-{"type":"log_sets","exercise_id":"<id>","sets":[{"num":1,"w":55,"reps":8}]}
-{"type":"log_myo","exercise_id":"<id>","activation":{"w":35,"reps":13},"mini_sets":4}
-{"type":"swap_exercise","from_id":"<id>","to_name":"<new name>"}
-{"type":"complete_session"}`
-}
-
-const PROG_SYS = `Expert RP Strength coach. Analyze this session and return targets for the NEXT time this exact day is performed.
-
-PROGRESSION RULES:
-- If all sets hit target reps with 2+ RIR remaining -> increase weight next session
-- If final set fell short of target reps -> hold weight, same target
-- If first set was a grind (0-1 RIR) -> reduce weight 5-10%
-- Nautilus PL machines: 5lb increments
-- Nautilus stack machines: 5lb increments
-- Cable stations: 4.5lb increments
-- Dumbbells: 5lb increments
-- Barbell: 5lb increments
-- Myo-reps: increase weight when activation set exceeds 15 reps easily
-- If exercise is SKIPPED → carry forward the exact same targets unchanged
-
-Return ONLY valid JSON, no markdown:
-{"next_cycle":<int>,"targets":[{"exercise_id":"<id>","exercise_name":"<n>","set_type":"straight|myo","target_weight":<num>,"target_sets":<int|null>,"target_reps_min":<int>,"target_reps_max":<int>,"target_rir":<int>,"coaching_note":"<or null>"}],"flags":[],"session_summary":"<2 sentences>"}`
-
-function buildProgPrompt(day, logs, exercises, currentCycle) {
-  const lines = exercises.map(ex => {
-    const sets = logs[ex.id] || []
-    if (!sets.length) return `[${ex.id}] ${ex.name}: SKIPPED`
-    if (ex.type === 'straight') return `[${ex.id}] ${ex.name}: ${sets.map(s => `Set${s.num || '?'} ${s.w}lb x${s.reps}`).join(', ')}`
-    const act = sets.find(s => s.type === 'act')
-    const minis = sets.filter(s => s.type === 'mini')
-    return `[${ex.id}] ${ex.name}: Act ${act?.w}lb x${act?.reps}, ${minis.length} minis x5`
-  })
-  return `${day.label} | Cycle ${currentCycle} -> Cycle ${currentCycle + 1} | Meso ${MESO}
-${lines.join('\n')}
-JSON only.`
-}
-
-async function callClaude(system, messages, maxTokens = 400) {
-  const delays = [1000, 3000]
-  for (let attempt = 0; attempt <= delays.length; attempt++) {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_KEY,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: maxTokens, system, messages })
-    })
-    const data = await res.json()
-    if (data.error) {
-      if (data.error.type === 'overloaded_error' && attempt < delays.length) {
-        await new Promise(r => setTimeout(r, delays[attempt]))
-        continue
-      }
-      throw new Error(data.error.type === 'overloaded_error'
-        ? 'The AI is overloaded right now — please try again in a moment.'
-        : data.error.message)
-    }
-    return data.content.filter(b => b.type === 'text').map(b => b.text).join('')
+function targetStr(ex) {
+  if (ex.type === 'straight') {
+    const reps = ex.max !== ex.min ? `${ex.min}-${ex.max}` : ex.min
+    return `${ex.sets}×${reps} @ ${fmt(ex.w)}lb${ex.note ?? ''}`
   }
+  return `Myo @ ${fmt(ex.w)}lb`
 }
 
-// ─── Home Screen ──────────────────────────────────────────────────────────────
-function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSession, activeSessionKey, onResumeSession, onRecover, onRecoverLatest }) {
+// ═══════════════════════════════════════════════════════════════════════════
+// Home Screen
+// ═══════════════════════════════════════════════════════════════════════════
+function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSession, activeSessionKey, onResumeSession, onRecover }) {
   const days = Object.values(split)
   const mainDays = days.filter(d => d.key !== 'day_5')
   const optDay = days.find(d => d.key === 'day_5')
@@ -273,28 +155,19 @@ function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSessio
             const date = new Date(h.date)
             const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
             const isExpanded = expandedIdx === i
-            const hadError = typeof h.summary === 'string' && h.summary.startsWith('Error:')
             return (
               <div key={i} onClick={() => setExpandedIdx(isExpanded ? null : i)}
-                style={{ background: C.surface, border: `0.5px solid ${hadError ? '#E8C98A' : C.border}`, borderRadius: 12, padding: '12px 16px', marginBottom: 8, cursor: h.summary ? 'pointer' : 'default' }}>
+                style={{ background: C.surface, border: `0.5px solid ${C.border}`, borderRadius: 12, padding: '12px 16px', marginBottom: 8, cursor: 'pointer' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ fontSize: 15, fontWeight: 600, color: C.text }}>{h.label}</div>
                   <div style={{ fontSize: 15, color: C.muted }}>{dateStr}</div>
                 </div>
                 <div style={{ display: 'flex', gap: 12, marginTop: 4, alignItems: 'center' }}>
-                  <div style={{ fontSize: 15, color: hadError ? C.orange : C.acc, fontWeight: 'bold', letterSpacing: 1 }}>
-                    {hadError ? 'NEEDS RECOMPUTE' : `CYCLE ${h.week}`}
-                  </div>
-                  {h.summary && <div style={{ fontSize: 15, color: C.muted }}>{isExpanded ? '▲' : '▼ coach note'}</div>}
+                  <div style={{ fontSize: 15, color: C.acc, fontWeight: 'bold', letterSpacing: 1 }}>CYCLE {h.week}</div>
+                  {h.summary && <div style={{ fontSize: 15, color: C.muted }}>{isExpanded ? '▲' : '▼'}</div>}
                 </div>
                 {isExpanded && h.summary && (
                   <div style={{ fontSize: 15, color: C.sub, marginTop: 8, lineHeight: 1.5, borderTop: `0.5px solid ${C.border}`, paddingTop: 8 }}>{h.summary}</div>
-                )}
-                {hadError && onRecover && (
-                  <button onClick={(e) => { e.stopPropagation(); onRecover(h.dayKey) }}
-                    style={{ marginTop: 10, width: '100%', padding: '10px 0', background: C.acc, border: 'none', borderRadius: 10, color: '#fff', fontSize: 14, fontWeight: 700, letterSpacing: 2, cursor: 'pointer', fontFamily: 'inherit' }}>
-                    ⟳ RECOMPUTE FROM CLOUD
-                  </button>
                 )}
               </div>
             )
@@ -335,8 +208,8 @@ function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSessio
         style={{ width: '100%', padding: '14px 0', background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 14, color: C.muted, fontSize: 15, fontWeight: 'bold', letterSpacing: 2, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 10 }}>
         EDIT PROGRAM
       </button>
-      {onRecoverLatest && (
-        <button onClick={onRecoverLatest}
+      {onRecover && (
+        <button onClick={onRecover}
           style={{ width: '100%', padding: '14px 0', background: 'none', border: `0.5px dashed ${C.border}`, borderRadius: 14, color: C.acc, fontSize: 14, fontWeight: 'bold', letterSpacing: 2, cursor: 'pointer', fontFamily: 'inherit' }}>
           ⟳ RECOVER LAST CLOUD SESSION
         </button>
@@ -348,7 +221,461 @@ function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSessio
   )
 }
 
-// ─── Edit Screen ──────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// Peek Modal
+// ═══════════════════════════════════════════════════════════════════════════
+function PeekModal({ split, currentDayKey, onClose }) {
+  const days = Object.values(split)
+  const [peekKey, setPeekKey] = useState(() => {
+    const others = days.filter(d => d.key !== currentDayKey)
+    return others[0]?.key ?? days[0].key
+  })
+  const day = split[peekKey]
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 900 }} onClick={onClose}>
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)' }} />
+      <div onClick={e => e.stopPropagation()}
+        style={{ position: 'absolute', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 480, background: C.surface, borderRadius: '20px 20px 0 0', display: 'flex', flexDirection: 'column', maxHeight: '80vh' }}>
+        <div style={{ padding: '18px 20px 14px', borderBottom: `0.5px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: 15, color: C.muted, letterSpacing: 2, fontWeight: 'bold' }}>QUICK LOOK</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.muted, fontSize: 22, cursor: 'pointer', padding: '0 4px' }}>×</button>
+        </div>
+        <div style={{ display: 'flex', overflowX: 'auto', padding: '10px 16px 0', gap: 8 }}>
+          {days.map(d => (
+            <button key={d.key} onClick={() => setPeekKey(d.key)}
+              style={{ flexShrink: 0, padding: '7px 14px', borderRadius: 20, border: `1px solid ${peekKey === d.key ? C.acc : C.border}`, background: peekKey === d.key ? C.accLight : 'none', color: peekKey === d.key ? C.acc : C.sub, fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+              {d.label}{d.key === currentDayKey ? ' ●' : ''}
+            </button>
+          ))}
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          <div style={{ padding: '8px 20px 12px', fontSize: 15, color: C.sub }}>{day.sub}</div>
+          {day.exercises.map((ex, i) => (
+            <div key={ex.id} style={{ display: 'flex', alignItems: 'center', padding: '13px 20px', borderBottom: `0.5px solid ${C.border}`, gap: 14 }}>
+              <div style={{ width: 24, height: 24, borderRadius: '50%', border: `1.5px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <span style={{ color: C.muted, fontSize: 15, fontWeight: 'bold' }}>{i + 1}</span>
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 15, fontWeight: 600, color: C.text }}>{ex.name}</div>
+                <div style={{ fontSize: 15, color: C.sub, marginTop: 2 }}>{targetStr(ex)}</div>
+              </div>
+              <div style={{ fontSize: 15, color: ex.type === 'myo' ? C.orange : C.blue, letterSpacing: 1, fontWeight: 'bold' }}>{ex.type === 'myo' ? 'MYO' : 'SETS'}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Numeric stepper (weight / reps)
+// ═══════════════════════════════════════════════════════════════════════════
+function Stepper({ value, onChange, step = 1, min = 0, max = 9999, label }) {
+  function bump(dir) {
+    const v = (value ?? 0) + dir * step
+    onChange(Math.max(min, Math.min(max, v)))
+  }
+  return (
+    <div style={{ flex: 1 }}>
+      <div style={{ fontSize: 12, color: C.muted, letterSpacing: 1, marginBottom: 4, fontWeight: 'bold' }}>{label}</div>
+      <div style={{ display: 'flex', alignItems: 'stretch', background: C.innerBg, border: `0.5px solid ${C.border}`, borderRadius: 10, overflow: 'hidden' }}>
+        <button onClick={() => bump(-1)} aria-label="decrement"
+          style={{ width: 40, background: 'none', border: 'none', color: C.sub, fontSize: 22, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>−</button>
+        <input type="number" inputMode="decimal" value={value ?? ''}
+          onChange={e => onChange(e.target.value === '' ? null : Number(e.target.value))}
+          style={{ flex: 1, background: 'none', border: 'none', color: C.text, fontSize: 20, fontWeight: 700, textAlign: 'center', fontFamily: 'inherit', outline: 'none', minWidth: 0, width: '100%' }} />
+        <button onClick={() => bump(1)} aria-label="increment"
+          style={{ width: 40, background: 'none', border: 'none', color: C.sub, fontSize: 22, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>+</button>
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RIR picker (0 / 1 / 2 / 3 / 4+)
+// ═══════════════════════════════════════════════════════════════════════════
+function RirPicker({ value, onChange }) {
+  return (
+    <div>
+      <div style={{ fontSize: 12, color: C.muted, letterSpacing: 1, marginBottom: 4, fontWeight: 'bold' }}>RIR (optional)</div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        {[0, 1, 2, 3, 4].map(r => {
+          const active = value === r
+          return (
+            <button key={r} onClick={() => onChange(active ? null : r)}
+              style={{ flex: 1, padding: '10px 0', background: active ? C.acc : C.innerBg, border: `0.5px solid ${active ? C.acc : C.border}`, borderRadius: 10, color: active ? '#fff' : C.sub, fontSize: 16, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+              {r === 4 ? '4+' : r}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Exercise Card (collapsed / expanded with set entry)
+// ═══════════════════════════════════════════════════════════════════════════
+function ExerciseCard({ ex, sets, expanded, onExpand, onLogSet, onDeleteSet, onSkip, supabaseSessionId }) {
+  const workSets = sets.filter(s => s.type !== 'swap')
+  const hasAnyLogs = workSets.length > 0
+  const skipped = sets.some(s => s.type === 'swap')
+
+  // Determine default weight/reps for next set
+  const lastSet = [...workSets].reverse().find(s => s.type !== 'mini')
+  const defaultWeight = lastSet?.w ?? ex.w ?? 0
+  const defaultReps = lastSet?.reps ?? Math.round(((ex.min ?? 8) + (ex.max ?? ex.min ?? 8)) / 2)
+
+  // Local form state (only when expanded)
+  const [weight, setWeight] = useState(defaultWeight)
+  const [reps, setReps] = useState(defaultReps)
+  const [rir, setRir] = useState(null)
+  const [mode, setMode] = useState('straight') // 'straight' | 'activation' | 'mini'
+
+  // When entering expanded mode, reset to defaults
+  useEffect(() => {
+    if (expanded) {
+      const last = [...workSets].reverse().find(s => s.type !== 'mini')
+      setWeight(last?.w ?? ex.w ?? 0)
+      setReps(last?.reps ?? Math.round(((ex.min ?? 8) + (ex.max ?? ex.min ?? 8)) / 2))
+      setRir(null)
+      if (ex.type === 'myo') {
+        const hasActivation = workSets.some(s => s.type === 'act')
+        setMode(hasActivation ? 'mini' : 'activation')
+      } else {
+        setMode('straight')
+      }
+    }
+  }, [expanded, ex.id])
+
+  const step = ex.type === 'straight' && ex.name.toLowerCase().includes('cable') ? 2.5 : 5
+
+  function doLogSet() {
+    if (weight == null || reps == null || reps <= 0) return
+    let newSet
+    if (mode === 'activation') {
+      newSet = { type: 'act', w: weight, reps, rir }
+    } else if (mode === 'mini') {
+      const miniCount = workSets.filter(s => s.type === 'mini').length
+      newSet = { type: 'mini', num: miniCount + 1, w: weight, reps }
+    } else {
+      const strCount = workSets.filter(s => s.type !== 'act' && s.type !== 'mini').length
+      newSet = { num: strCount + 1, w: weight, reps, rir }
+    }
+    onLogSet(newSet)
+    // After logging: mini mode sticks at mini, straight increments set count
+    if (mode === 'activation') setMode('mini')
+    // Haptic
+    if (navigator.vibrate) navigator.vibrate(30)
+  }
+
+  // Collapsed view
+  if (!expanded) {
+    return (
+      <button onClick={onExpand}
+        style={{ width: '100%', textAlign: 'left', background: hasAnyLogs ? C.innerBg : C.surface, border: `0.5px solid ${C.border}`, borderLeft: `3px solid ${hasAnyLogs ? C.acc : skipped ? C.muted : C.border}`, borderRadius: 12, padding: '14px 16px', marginBottom: 8, cursor: 'pointer', fontFamily: 'inherit', color: C.text }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 16, fontWeight: 600, color: C.text }}>{ex.name}</div>
+            <div style={{ fontSize: 14, color: C.sub, marginTop: 2 }}>{targetStr(ex)}</div>
+          </div>
+          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+            {hasAnyLogs ? (
+              <div style={{ fontSize: 15, color: C.acc, fontWeight: 700 }}>
+                ✓ {workSets.length} {workSets.length === 1 ? 'set' : 'sets'}
+              </div>
+            ) : skipped ? (
+              <div style={{ fontSize: 14, color: C.muted, fontWeight: 700, letterSpacing: 1 }}>SKIPPED</div>
+            ) : (
+              <div style={{ fontSize: 14, color: ex.type === 'myo' ? C.orange : C.blue, fontWeight: 700, letterSpacing: 1 }}>{ex.type === 'myo' ? 'MYO' : 'SETS'}</div>
+            )}
+          </div>
+        </div>
+      </button>
+    )
+  }
+
+  // Expanded view
+  return (
+    <div style={{ background: C.surface, border: `0.5px solid ${C.acc}`, borderLeft: `3px solid ${C.acc}`, borderRadius: 12, padding: 16, marginBottom: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 18, fontWeight: 700, color: C.text }}>{ex.name}</div>
+          <div style={{ fontSize: 14, color: C.sub, marginTop: 2 }}>Target: {targetStr(ex)}</div>
+        </div>
+        <button onClick={onExpand} aria-label="collapse"
+          style={{ background: 'none', border: 'none', color: C.muted, fontSize: 22, cursor: 'pointer', padding: '0 4px' }}>×</button>
+      </div>
+
+      {/* Logged sets */}
+      {workSets.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          {workSets.map((s, i) => {
+            const label = s.type === 'act' ? 'Activation'
+                        : s.type === 'mini' ? `Mini ${s.num}`
+                        : `Set ${s.num}`
+            return (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '10px 12px', background: C.innerBg, borderRadius: 8, marginBottom: 4 }}>
+                <div style={{ flex: 1, fontSize: 14, color: C.sub, fontWeight: 600 }}>{label}</div>
+                <div style={{ fontSize: 15, color: C.text, fontWeight: 700, fontFamily: 'monospace', marginRight: 10 }}>
+                  {fmt(s.w)}lb × {s.reps}{s.rir != null ? ` · ${s.rir} RIR` : ''}
+                </div>
+                <button onClick={() => onDeleteSet(i)} aria-label="delete set"
+                  style={{ background: 'none', border: 'none', color: C.red, fontSize: 14, fontWeight: 700, cursor: 'pointer', padding: '4px 8px', fontFamily: 'inherit' }}>
+                  DEL
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Mode indicator for myo */}
+      {ex.type === 'myo' && (
+        <div style={{ fontSize: 12, color: C.orange, letterSpacing: 1, marginBottom: 8, fontWeight: 'bold' }}>
+          {mode === 'activation' ? 'LOG ACTIVATION SET' : 'LOG MINI SET'}
+        </div>
+      )}
+
+      {/* Entry form */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        <Stepper value={weight} onChange={setWeight} step={step} label="WEIGHT (lb)" />
+        <Stepper value={reps} onChange={setReps} step={1} min={0} max={50} label="REPS" />
+      </div>
+      {mode !== 'mini' && (
+        <div style={{ marginBottom: 14 }}>
+          <RirPicker value={rir} onChange={setRir} />
+        </div>
+      )}
+
+      <button onClick={doLogSet}
+        style={{ width: '100%', padding: 16, background: C.acc, border: 'none', borderRadius: 12, color: '#fff', fontSize: 17, fontWeight: 800, letterSpacing: 1, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 10 }}>
+        LOG SET
+      </button>
+
+      {!hasAnyLogs && !skipped && (
+        <button onClick={onSkip}
+          style={{ width: '100%', padding: 10, background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 10, color: C.muted, fontSize: 13, fontWeight: 700, letterSpacing: 1, cursor: 'pointer', fontFamily: 'inherit' }}>
+          SKIP THIS EXERCISE
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Session Screen (workout logging)
+// ═══════════════════════════════════════════════════════════════════════════
+function SessionScreen({
+  dayKey, split, onBack, onCompleteClick, currentCycle,
+  sessionLogs, setSessionLogs,
+  sessionExercises,
+  supabaseSessionId,
+}) {
+  const day = split[dayKey]
+  const [expandedId, setExpandedId] = useState(null)
+  const [showPeek, setShowPeek] = useState(false)
+  const [showCompleteConfirm, setShowCompleteConfirm] = useState(false)
+  const [timerEnd, setTimerEnd] = useState(null)
+  const [timerDuration, setTimerDuration] = useState(null)
+  const [timerNow, setTimerNow] = useState(Date.now())
+
+  useEffect(() => {
+    const id = setInterval(() => setTimerNow(Date.now()), 250)
+    return () => clearInterval(id)
+  }, [])
+
+  function startTimer(secs) { setTimerDuration(secs); setTimerEnd(Date.now() + secs * 1000) }
+  function cancelTimer() { setTimerEnd(null); setTimerDuration(null) }
+
+  const timerRemaining = timerEnd ? Math.max(0, Math.ceil((timerEnd - timerNow) / 1000)) : null
+  const timerDone = timerEnd && timerRemaining === 0
+  useEffect(() => {
+    if (timerDone) {
+      if (navigator.vibrate) navigator.vibrate([200, 100, 200])
+      setTimerEnd(null); setTimerDuration(null)
+    }
+  }, [timerDone])
+
+  const loggedCount = sessionExercises.filter(ex => (sessionLogs[ex.id] || []).some(s => s.type !== 'swap')).length
+
+  function logSet(exerciseId, newSet) {
+    const next = { ...sessionLogs, [exerciseId]: [...(sessionLogs[exerciseId] || []).filter(s => s.type !== 'swap'), newSet] }
+    setSessionLogs(next)
+    // Fire async Supabase write
+    const ex = sessionExercises.find(e => e.id === exerciseId)
+    if (ex?._exercise_id && supabaseSessionId) {
+      writeExerciseSets({ sessionId: supabaseSessionId, exerciseUuid: ex._exercise_id, sets: next[exerciseId] })
+    }
+    // Auto-start 60s rest after a non-mini set
+    if (newSet.type !== 'mini' && !timerEnd) startTimer(60)
+  }
+
+  function deleteSet(exerciseId, idx) {
+    const existing = sessionLogs[exerciseId] || []
+    const workSets = existing.filter(s => s.type !== 'swap')
+    const next = { ...sessionLogs, [exerciseId]: workSets.filter((_, i) => i !== idx) }
+    setSessionLogs(next)
+    const ex = sessionExercises.find(e => e.id === exerciseId)
+    if (ex?._exercise_id && supabaseSessionId) {
+      writeExerciseSets({ sessionId: supabaseSessionId, exerciseUuid: ex._exercise_id, sets: next[exerciseId] })
+    }
+  }
+
+  function skipExercise(exerciseId) {
+    const next = { ...sessionLogs, [exerciseId]: [{ type: 'swap' }] }
+    setSessionLogs(next)
+    setExpandedId(null)
+  }
+
+  return (
+    <>
+      {showPeek && <PeekModal split={split} currentDayKey={dayKey} onClose={() => setShowPeek(false)} />}
+      {showCompleteConfirm && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }} onClick={() => setShowCompleteConfirm(false)} />
+          <div onClick={e => e.stopPropagation()}
+            style={{ position: 'relative', background: C.surface, borderRadius: 20, padding: '28px 24px', width: '100%', maxWidth: 360, border: `0.5px solid ${C.border}` }}>
+            <div style={{ fontSize: 22, fontWeight: 800, color: C.text, marginBottom: 8 }}>Finish session?</div>
+            <div style={{ fontSize: 15, color: C.sub, lineHeight: 1.5, marginBottom: 24 }}>
+              You logged {loggedCount} of {sessionExercises.length} exercises. We'll calculate next week's targets.
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setShowCompleteConfirm(false)}
+                style={{ flex: 1, padding: '14px 0', background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 12, color: C.sub, fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                KEEP GOING
+              </button>
+              <button onClick={() => { setShowCompleteConfirm(false); onCompleteClick() }}
+                style={{ flex: 1, padding: '14px 0', background: C.acc, border: 'none', borderRadius: 12, color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                FINISH
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Header */}
+      <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', padding: '14px 18px', borderBottom: `0.5px solid ${C.border}`, gap: 12, background: C.surface }}>
+        <button onClick={onBack} aria-label="back"
+          style={{ background: 'none', border: 'none', color: C.sub, fontSize: 28, cursor: 'pointer', padding: '4px 8px', lineHeight: 1 }}>←</button>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 20, fontWeight: 700, color: C.text, lineHeight: 1.1 }}>{day.label}</div>
+          <div style={{ fontSize: 14, color: C.sub, marginTop: 2 }}>{day.sub} · Cycle {currentCycle}</div>
+        </div>
+        <button onClick={() => setShowPeek(true)}
+          style={{ background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 8, color: C.muted, fontSize: 13, fontWeight: 'bold', letterSpacing: 1, padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit', marginRight: 4 }}>DAYS</button>
+        <div style={{ fontSize: 15, color: C.muted, fontFamily: 'monospace', fontWeight: 'bold' }}>{loggedCount}/{sessionExercises.length}</div>
+      </div>
+
+      {/* Exercise list */}
+      <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '12px 14px 12px', background: C.bg }}>
+        {sessionExercises.map(ex => (
+          <ExerciseCard key={ex.id}
+            ex={ex}
+            sets={sessionLogs[ex.id] || []}
+            expanded={expandedId === ex.id}
+            onExpand={() => setExpandedId(expandedId === ex.id ? null : ex.id)}
+            onLogSet={s => logSet(ex.id, s)}
+            onDeleteSet={i => deleteSet(ex.id, i)}
+            onSkip={() => skipExercise(ex.id)}
+            supabaseSessionId={supabaseSessionId}
+          />
+        ))}
+
+        <button onClick={() => setShowCompleteConfirm(true)}
+          disabled={loggedCount === 0}
+          style={{ width: '100%', marginTop: 12, padding: 18, background: loggedCount === 0 ? C.border : C.acc, border: 'none', borderRadius: 14, color: '#fff', fontSize: 17, fontWeight: 800, letterSpacing: 1, cursor: loggedCount === 0 ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+          FINISH SESSION
+        </button>
+      </div>
+
+      {/* Rest timer bar */}
+      <div style={{ flexShrink: 0, borderTop: `0.5px solid ${C.border}`, background: C.surface }}>
+        {timerEnd ? (
+          <div onClick={cancelTimer} style={{ cursor: 'pointer', padding: '12px 18px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <div style={{ fontSize: 13, color: C.muted, fontWeight: 'bold', letterSpacing: 1 }}>REST</div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: C.acc, fontFamily: 'monospace' }}>
+                {Math.floor(timerRemaining / 60)}:{String(timerRemaining % 60).padStart(2, '0')}
+              </div>
+              <div style={{ fontSize: 13, color: C.muted, letterSpacing: 1 }}>TAP TO CANCEL</div>
+            </div>
+            <div style={{ height: 4, background: C.border, borderRadius: 2, overflow: 'hidden' }}>
+              <div style={{ height: '100%', background: C.acc, borderRadius: 2, transition: 'width 0.25s linear', width: `${(timerRemaining / timerDuration) * 100}%` }} />
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', padding: '10px 18px', gap: 8 }}>
+            <div style={{ fontSize: 13, color: C.muted, fontWeight: 'bold', letterSpacing: 1, marginRight: 4 }}>REST</div>
+            {[['60s', 60], ['90s', 90], ['2m', 120], ['3m', 180]].map(([label, secs]) => (
+              <button key={label} onClick={() => startTimer(secs)}
+                style={{ flex: 1, padding: '9px 0', background: C.bg, border: `0.5px solid ${C.border}`, borderRadius: 10, color: C.sub, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Results Screen
+// ═══════════════════════════════════════════════════════════════════════════
+function ResultsScreen({ day, result, currentCycle, onDone, onBack }) {
+  const targets = result?.targets ?? []
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: '28px 20px 40px', background: C.bg }}>
+      <div style={{ fontSize: 15, color: C.acc, letterSpacing: 3, marginBottom: 8, fontWeight: 'bold' }}>
+        NEXT {day.label.toUpperCase()} — CYCLE {result?.next_cycle ?? currentCycle + 1}
+      </div>
+      <div style={{ fontSize: 36, fontWeight: 800, lineHeight: 1, marginBottom: 6, color: C.text }}>{day.label}</div>
+      {result?.session_summary && (
+        <div style={{ background: C.accLight, border: `0.5px solid #9EC4A8`, borderRadius: 12, padding: '14px 18px', margin: '18px 0 24px' }}>
+          <div style={{ fontSize: 13, color: C.acc, letterSpacing: 1, marginBottom: 6, fontWeight: 'bold' }}>SESSION SUMMARY</div>
+          <div style={{ fontSize: 15, color: C.text, lineHeight: 1.6 }}>{result.session_summary}</div>
+        </div>
+      )}
+      <div style={{ marginBottom: 28 }}>
+        {targets.map((t, i) => {
+          const color = t.status === 'up' ? C.acc : t.status === 'deload' ? C.red : t.status === 'skipped' ? C.muted : C.sub
+          const arrow = t.status === 'up' ? '↑' : t.status === 'deload' ? '↓' : t.status === 'skipped' ? '—' : '='
+          return (
+            <div key={i} style={{ borderBottom: `0.5px solid ${C.border}`, padding: '14px 0', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 16, fontWeight: 600, color: C.text }}>{t.exercise_name}</div>
+                {t.note && <div style={{ fontSize: 13, color, marginTop: 3 }}>↳ {t.note}</div>}
+              </div>
+              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                <div style={{ fontSize: 20, color, fontWeight: 800, fontFamily: 'monospace' }}>
+                  {fmt(t.target_weight)}lb {arrow}
+                </div>
+                <div style={{ fontSize: 13, color: C.sub, marginTop: 2 }}>
+                  {t.target_sets ? t.target_sets + '×' : 'myo '}
+                  {t.target_reps_min}{t.target_reps_max !== t.target_reps_min ? '-' + t.target_reps_max : ''}
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      <button onClick={onDone}
+        style={{ width: '100%', padding: 18, borderRadius: 14, background: C.acc, color: '#fff', fontSize: 18, fontWeight: 700, letterSpacing: 1, border: 'none', cursor: 'pointer', fontFamily: 'inherit', marginBottom: 10 }}>
+        SAVE & BACK TO HOME
+      </button>
+      <button onClick={onBack}
+        style={{ width: '100%', padding: 14, borderRadius: 14, background: 'none', color: C.sub, fontSize: 14, fontWeight: 700, letterSpacing: 1, border: `0.5px solid ${C.border}`, cursor: 'pointer', fontFamily: 'inherit' }}>
+        BACK TO SESSION
+      </button>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Edit Screen (unchanged from prior)
+// ═══════════════════════════════════════════════════════════════════════════
 function EditScreen({ split, onSave, onBack }) {
   const [draft, setDraft] = useState(() => JSON.parse(JSON.stringify(split)))
   const [openDay, setOpenDay] = useState(null)
@@ -358,15 +685,11 @@ function EditScreen({ split, onSave, onBack }) {
     setDraft(prev => {
       const next = JSON.parse(JSON.stringify(prev))
       const numFields = ['sets', 'min', 'max', 'w']
-      if (numFields.includes(field)) {
-        next[dayKey].exercises[idx][field] = value === '' ? null : Number(value)
-      } else {
-        next[dayKey].exercises[idx][field] = value
-      }
+      if (numFields.includes(field)) next[dayKey].exercises[idx][field] = value === '' ? null : Number(value)
+      else next[dayKey].exercises[idx][field] = value
       return next
     })
   }
-
   function removeExercise(dayKey, idx) {
     setDraft(prev => {
       const next = JSON.parse(JSON.stringify(prev))
@@ -375,17 +698,13 @@ function EditScreen({ split, onSave, onBack }) {
     })
     setEditingIdx(null)
   }
-
   function addExercise(dayKey) {
     setDraft(prev => {
       const next = JSON.parse(JSON.stringify(prev))
-      next[dayKey].exercises.push({
-        id: `new_${Date.now()}`, name: 'New Exercise', type: 'straight', sets: 3, min: 8, max: 12, w: null
-      })
+      next[dayKey].exercises.push({ id: `new_${Date.now()}`, name: 'New Exercise', type: 'straight', sets: 3, min: 8, max: 12, w: null })
       return next
     })
   }
-
   function moveExercise(dayKey, idx, dir) {
     const target = idx + dir
     setDraft(prev => {
@@ -398,16 +717,7 @@ function EditScreen({ split, onSave, onBack }) {
     setEditingIdx(null)
   }
 
-  function handleSave() { saveProgram(draft); onSave(draft) }
-  function handleReset() {
-    const fresh = JSON.parse(JSON.stringify(DEFAULT_SPLIT))
-    setDraft(fresh); saveProgram(fresh); onSave(fresh)
-  }
-
-  const inputStyle = {
-    background: C.innerBg, border: `0.5px solid ${C.border}`, borderRadius: 8, color: C.text,
-    fontSize: 15, padding: '8px 10px', width: '100%', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box'
-  }
+  const inputStyle = { background: C.innerBg, border: `0.5px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 15, padding: '8px 10px', width: '100%', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: C.bg }}>
@@ -415,7 +725,6 @@ function EditScreen({ split, onSave, onBack }) {
         <button onClick={onBack} style={{ background: 'none', border: 'none', color: C.sub, fontSize: 28, cursor: 'pointer', padding: '4px 8px', lineHeight: 1 }}>←</button>
         <div style={{ flex: 1, fontSize: 20, fontWeight: 700, color: C.text }}>Edit Program</div>
       </div>
-
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px 120px' }}>
         {Object.values(draft).map(day => (
           <div key={day.key} style={{ marginBottom: 12 }}>
@@ -423,11 +732,10 @@ function EditScreen({ split, onSave, onBack }) {
               style={{ width: '100%', background: C.surface, border: `0.5px solid ${C.border}`, borderRadius: 12, padding: '14px 18px', textAlign: 'left', cursor: 'pointer', color: C.text, fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
                 <div style={{ fontSize: 18, fontWeight: 700 }}>{day.label}</div>
-                <div style={{ fontSize: 15, color: C.sub, marginTop: 2 }}>{day.sub}</div>
+                <div style={{ fontSize: 14, color: C.sub, marginTop: 2 }}>{day.sub}</div>
               </div>
-              <div style={{ fontSize: 15, color: C.muted, fontWeight: 'bold' }}>{day.exercises.length} EX {openDay === day.key ? '▲' : '▼'}</div>
+              <div style={{ fontSize: 14, color: C.muted, fontWeight: 'bold' }}>{day.exercises.length} EX {openDay === day.key ? '▲' : '▼'}</div>
             </button>
-
             {openDay === day.key && (
               <div style={{ borderLeft: `2px solid ${C.border}`, marginLeft: 16, paddingLeft: 14, marginTop: 8 }}>
                 {day.exercises.map((ex, i) => {
@@ -438,68 +746,66 @@ function EditScreen({ split, onSave, onBack }) {
                         <div onClick={() => setEditingIdx(`${day.key}-${i}`)} style={{ cursor: 'pointer' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div style={{ fontSize: 15, fontWeight: 600, color: C.text }}>{ex.name}</div>
-                            <div style={{ fontSize: 15, color: ex.type === 'myo' ? C.orange : C.blue, fontWeight: 'bold', letterSpacing: 1 }}>{ex.type === 'myo' ? 'MYO' : 'SETS'}</div>
+                            <div style={{ fontSize: 13, color: ex.type === 'myo' ? C.orange : C.blue, fontWeight: 'bold', letterSpacing: 1 }}>{ex.type === 'myo' ? 'MYO' : 'SETS'}</div>
                           </div>
-                          <div style={{ fontSize: 15, color: C.muted, marginTop: 3 }}>
-                            {ex.type === 'straight' ? `${ex.sets}×${ex.min}-${ex.max} @ ${fmt(ex.w)}lb${ex.note || ''}` : `Myo @ ${fmt(ex.w)}lb`}
-                          </div>
+                          <div style={{ fontSize: 14, color: C.muted, marginTop: 3 }}>{targetStr(ex)}</div>
                         </div>
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                           <div>
-                            <div style={{ fontSize: 15, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>NAME</div>
+                            <div style={{ fontSize: 12, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>NAME</div>
                             <input value={ex.name} onChange={e => updateExercise(day.key, i, 'name', e.target.value)} style={inputStyle} />
                           </div>
                           <div style={{ display: 'flex', gap: 10 }}>
                             <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: 15, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>TYPE</div>
+                              <div style={{ fontSize: 12, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>TYPE</div>
                               <select value={ex.type} onChange={e => updateExercise(day.key, i, 'type', e.target.value)} style={{ ...inputStyle, appearance: 'auto' }}>
                                 <option value="straight">Straight</option>
                                 <option value="myo">Myo</option>
                               </select>
                             </div>
                             <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: 15, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>WEIGHT</div>
+                              <div style={{ fontSize: 12, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>WEIGHT</div>
                               <input type="number" value={ex.w ?? ''} placeholder="TBD" onChange={e => updateExercise(day.key, i, 'w', e.target.value)} style={inputStyle} />
                             </div>
                           </div>
                           {ex.type === 'straight' && (
                             <div style={{ display: 'flex', gap: 10 }}>
                               <div style={{ flex: 1 }}>
-                                <div style={{ fontSize: 15, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>SETS</div>
+                                <div style={{ fontSize: 12, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>SETS</div>
                                 <input type="number" value={ex.sets ?? ''} onChange={e => updateExercise(day.key, i, 'sets', e.target.value)} style={inputStyle} />
                               </div>
                               <div style={{ flex: 1 }}>
-                                <div style={{ fontSize: 15, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>MIN REPS</div>
+                                <div style={{ fontSize: 12, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>MIN</div>
                                 <input type="number" value={ex.min ?? ''} onChange={e => updateExercise(day.key, i, 'min', e.target.value)} style={inputStyle} />
                               </div>
                               <div style={{ flex: 1 }}>
-                                <div style={{ fontSize: 15, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>MAX REPS</div>
+                                <div style={{ fontSize: 12, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>MAX</div>
                                 <input type="number" value={ex.max ?? ''} onChange={e => updateExercise(day.key, i, 'max', e.target.value)} style={inputStyle} />
                               </div>
                             </div>
                           )}
                           <div>
-                            <div style={{ fontSize: 15, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>NOTE</div>
+                            <div style={{ fontSize: 12, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>NOTE</div>
                             <input value={ex.note || ''} placeholder="e.g. /side" onChange={e => updateExercise(day.key, i, 'note', e.target.value || undefined)} style={inputStyle} />
                           </div>
-                          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                          <div style={{ display: 'flex', gap: 8 }}>
                             <button onClick={() => moveExercise(day.key, i, -1)} disabled={i === 0}
-                              style={{ flex: 1, padding: '8px 0', background: C.bg, border: `0.5px solid ${C.border}`, borderRadius: 8, color: i === 0 ? C.border : C.sub, fontSize: 15, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>UP</button>
+                              style={{ flex: 1, padding: '8px 0', background: C.bg, border: `0.5px solid ${C.border}`, borderRadius: 8, color: i === 0 ? C.border : C.sub, fontSize: 13, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>UP</button>
                             <button onClick={() => moveExercise(day.key, i, 1)} disabled={i === day.exercises.length - 1}
-                              style={{ flex: 1, padding: '8px 0', background: C.bg, border: `0.5px solid ${C.border}`, borderRadius: 8, color: i === day.exercises.length - 1 ? C.border : C.sub, fontSize: 15, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>DOWN</button>
+                              style={{ flex: 1, padding: '8px 0', background: C.bg, border: `0.5px solid ${C.border}`, borderRadius: 8, color: i === day.exercises.length - 1 ? C.border : C.sub, fontSize: 13, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>DOWN</button>
                             <button onClick={() => removeExercise(day.key, i)}
-                              style={{ flex: 1, padding: '8px 0', background: '#FFF0F0', border: '0.5px solid #FFCCCC', borderRadius: 8, color: '#CC3333', fontSize: 15, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>DELETE</button>
+                              style={{ flex: 1, padding: '8px 0', background: '#FFF0F0', border: '0.5px solid #FFCCCC', borderRadius: 8, color: '#CC3333', fontSize: 13, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>DELETE</button>
                           </div>
                           <button onClick={() => setEditingIdx(null)}
-                            style={{ padding: '8px 0', background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 8, color: C.sub, fontSize: 15, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>DONE</button>
+                            style={{ padding: '8px 0', background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 8, color: C.sub, fontSize: 14, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>DONE</button>
                         </div>
                       )}
                     </div>
                   )
                 })}
                 <button onClick={() => addExercise(day.key)}
-                  style={{ width: '100%', padding: '12px 0', background: 'none', border: `0.5px dashed ${C.border}`, borderRadius: 10, color: C.muted, fontSize: 15, fontWeight: 'bold', letterSpacing: 1, cursor: 'pointer', marginTop: 4, fontFamily: 'inherit' }}>
+                  style={{ width: '100%', padding: '12px 0', background: 'none', border: `0.5px dashed ${C.border}`, borderRadius: 10, color: C.muted, fontSize: 14, fontWeight: 'bold', letterSpacing: 1, cursor: 'pointer', marginTop: 4, fontFamily: 'inherit' }}>
                   + ADD EXERCISE
                 </button>
               </div>
@@ -507,423 +813,17 @@ function EditScreen({ split, onSave, onBack }) {
           </div>
         ))}
       </div>
-
-      <div style={{ position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 480, padding: '16px 18px', background: C.surface, borderTop: `0.5px solid ${C.border}`, display: 'flex', gap: 10, boxSizing: 'border-box' }}>
-        <button onClick={handleReset}
-          style={{ flex: 1, padding: '14px 0', background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 12, color: C.muted, fontSize: 14, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>RESET</button>
-        <button onClick={handleSave}
-          style={{ flex: 2, padding: '14px 0', background: C.acc, border: 'none', borderRadius: 12, color: '#fff', fontSize: 16, fontWeight: 700, letterSpacing: 1, cursor: 'pointer', fontFamily: 'inherit' }}>SAVE CHANGES</button>
+      <div style={{ position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 480, padding: '16px 18px', background: C.surface, borderTop: `0.5px solid ${C.border}`, boxSizing: 'border-box' }}>
+        <button onClick={() => { saveProgram(draft); onSave(draft) }}
+          style={{ width: '100%', padding: '14px 0', background: C.acc, border: 'none', borderRadius: 12, color: '#fff', fontSize: 16, fontWeight: 700, letterSpacing: 1, cursor: 'pointer', fontFamily: 'inherit' }}>SAVE CHANGES</button>
       </div>
     </div>
   )
 }
 
-// ─── Peek Modal — view another day without leaving session ────────────────────
-function PeekModal({ split, currentDayKey, onClose }) {
-  const days = Object.values(split)
-  const [peekKey, setPeekKey] = useState(() => {
-    const others = days.filter(d => d.key !== currentDayKey)
-    return others[0]?.key ?? days[0].key
-  })
-  const day = split[peekKey]
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 900, display: 'flex', flexDirection: 'column' }}
-      onClick={onClose}>
-      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)' }} />
-      <div onClick={e => e.stopPropagation()}
-        style={{ position: 'absolute', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 480, background: C.surface, borderRadius: '20px 20px 0 0', display: 'flex', flexDirection: 'column', maxHeight: '80vh' }}>
-        <div style={{ flexShrink: 0, padding: '18px 20px 14px', borderBottom: `0.5px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ fontSize: 15, color: C.muted, letterSpacing: 2, fontWeight: 'bold' }}>QUICK LOOK</div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.muted, fontSize: 22, cursor: 'pointer', lineHeight: 1, padding: '0 4px' }}>×</button>
-        </div>
-        <div style={{ flexShrink: 0, display: 'flex', overflowX: 'auto', padding: '10px 16px 0', gap: 8 }}>
-          {days.map(d => (
-            <button key={d.key} onClick={() => setPeekKey(d.key)}
-              style={{ flexShrink: 0, padding: '7px 14px', borderRadius: 20, border: `1px solid ${peekKey === d.key ? C.acc : C.border}`, background: peekKey === d.key ? C.accLight : 'none', color: peekKey === d.key ? C.acc : C.sub, fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-              {d.label}{d.key === currentDayKey ? ' ●' : ''}
-            </button>
-          ))}
-        </div>
-        <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
-          <div style={{ padding: '8px 20px 12px', fontSize: 15, color: C.sub }}>{day.sub}</div>
-          {day.exercises.map((ex, i) => {
-            const target = ex.type === 'straight'
-              ? `${ex.sets}×${ex.min}${ex.max !== ex.min ? '-' + ex.max : ''} @ ${fmt(ex.w)}lb${ex.note ?? ''}`
-              : `Myo-reps @ ${fmt(ex.w)}lb`
-            return (
-              <div key={ex.id} style={{ display: 'flex', alignItems: 'center', padding: '13px 20px', borderBottom: `0.5px solid ${C.border}`, gap: 14 }}>
-                <div style={{ width: 24, height: 24, borderRadius: '50%', border: `1.5px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <span style={{ color: C.muted, fontSize: 15, fontWeight: 'bold' }}>{i + 1}</span>
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 15, fontWeight: 600, color: C.text }}>{ex.name}</div>
-                  <div style={{ fontSize: 15, color: C.sub, marginTop: 2 }}>{target}</div>
-                </div>
-                <div style={{ fontSize: 15, color: ex.type === 'myo' ? C.orange : C.blue, letterSpacing: 1, fontWeight: 'bold', flexShrink: 0 }}>
-                  {ex.type === 'myo' ? 'MYO' : 'SETS'}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ─── Session Screen ───────────────────────────────────────────────────────────
-function SessionScreen({
-  dayKey, split, onBack, onComplete, currentCycle,
-  sessionLogs, setSessionLogs,
-  sessionChat, setSessionChat,
-  sessionExercises, setSessionExercises,
-  sessionScreen, setSessionScreen,
-  sessionResult, setSessionResult,
-  supabaseSessionId,
-  runProgression,
-}) {
-  const day = split[dayKey]
-  const [tab, setTab] = useState('coach')
-  const [thinking, setThinking] = useState(false)
-  const [input, setInput] = useState('')
-  const [showPeek, setShowPeek] = useState(false)
-  const [showCompleteConfirm, setShowCompleteConfirm] = useState(false)
-  const [pendingLogs, setPendingLogs] = useState(null)
-  const [pendingEx, setPendingEx] = useState(null)
-  const [timerEnd, setTimerEnd] = useState(null)
-  const [timerDuration, setTimerDuration] = useState(null)
-  const [timerNow, setTimerNow] = useState(Date.now())
-  const chatRef = useRef(null)
-
-  useEffect(() => {
-    const id = setInterval(() => setTimerNow(Date.now()), 250)
-    return () => clearInterval(id)
-  }, [])
-
-  function startTimer(secs) {
-    setTimerDuration(secs)
-    setTimerEnd(Date.now() + secs * 1000)
-  }
-  function cancelTimer() { setTimerEnd(null); setTimerDuration(null) }
-
-  const timerRemaining = timerEnd ? Math.max(0, Math.ceil((timerEnd - timerNow) / 1000)) : null
-  const timerDone = timerEnd && timerRemaining === 0
-
-  useEffect(() => {
-    if (timerDone) {
-      if (navigator.vibrate) navigator.vibrate([200, 100, 200])
-      setTimerEnd(null); setTimerDuration(null)
-    }
-  }, [timerDone])
-
-  useEffect(() => {
-    if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight
-  }, [sessionChat, thinking])
-
-  const loggedCount = sessionExercises.filter(ex => (sessionLogs[ex.id] || []).length > 0).length
-
-  async function send() {
-    const text = input.trim()
-    if (!text || thinking) return
-    const newChat = [...sessionChat, { role: 'user', content: text }]
-    setSessionChat(newChat); setThinking(true); setInput('')
-    try {
-      const allMsgs = newChat.filter(m => m.role === 'user' || m.role === 'assistant')
-      const msgs = allMsgs.slice(-8).map(m => ({ role: m.role, content: m.content }))
-      const raw = await callClaude(buildCoachSys(day, sessionLogs, sessionExercises, currentCycle), msgs)
-      let parsed
-      try {
-        const jsonMatch = raw.match(/\{[\s\S]*\}/)
-        const jsonStr = jsonMatch ? jsonMatch[0] : raw
-        parsed = JSON.parse(jsonStr.replace(/[\r\n]+/g, ' '))
-      } catch (e) {
-        console.error('[send] JSON parse failed', e, raw)
-        parsed = {
-          message: "⚠️ I couldn't parse the coach response as JSON — your last message wasn't logged. Try rephrasing (e.g. \"log 3 sets of 10 at 100lbs\").",
-          actions: [],
-        }
-      }
-      const newLogs = { ...sessionLogs }
-      const newEx = [...sessionExercises]
-      let doComplete = false
-      let didLog = false
-      for (const a of (parsed.actions || [])) {
-        if (a.type === 'log_sets' && a.exercise_id) {
-          const sets = (a.sets || []).map(s => ({ ...s, type: 'straight' }))
-          newLogs[a.exercise_id] = sets
-          didLog = true
-          const ex = newEx.find(e => e.id === a.exercise_id)
-          if (ex?._exercise_id && supabaseSessionId) {
-            writeExerciseSets({ sessionId: supabaseSessionId, exerciseUuid: ex._exercise_id, sets })
-          }
-        }
-        if (a.type === 'log_myo' && a.exercise_id) {
-          const la = [{ type: 'act', w: a.activation?.w, reps: a.activation?.reps }]
-          for (let i = 0; i < (a.mini_sets ?? 4); i++) la.push({ type: 'mini', num: i + 1, w: a.activation?.w, reps: 5 })
-          newLogs[a.exercise_id] = la
-          didLog = true
-          const ex = newEx.find(e => e.id === a.exercise_id)
-          if (ex?._exercise_id && supabaseSessionId) {
-            writeExerciseSets({ sessionId: supabaseSessionId, exerciseUuid: ex._exercise_id, sets: la })
-          }
-        }
-        if (a.type === 'swap_exercise' && a.from_id) {
-          const idx = newEx.findIndex(e => e.id === a.from_id)
-          if (idx >= 0) {
-            // Try to resolve the new name against the master exercises table so future
-            // set_logs point at the correct exercise UUID. Fall back to the old UUID
-            // with the new label if resolution fails (network issue, unknown exercise).
-            const resolved = await resolveExerciseByName(a.to_name)
-            newEx[idx] = {
-              ...newEx[idx],
-              name: resolved?.name ?? a.to_name,
-              _exercise_id: resolved?.id ?? newEx[idx]._exercise_id,
-              w: null,
-            }
-            newLogs[a.from_id] = [{ type: 'swap' }]
-          }
-        }
-        if (a.type === 'complete_session') doComplete = true
-      }
-      setSessionLogs(newLogs); setSessionExercises(newEx)
-      setSessionChat([...newChat, { role: 'assistant', content: parsed.message }])
-      setThinking(false)
-      if (didLog && navigator.vibrate) navigator.vibrate(50)
-      if (doComplete) { setPendingLogs(newLogs); setPendingEx(newEx); setShowCompleteConfirm(true) }
-    } catch (e) {
-      setSessionChat([...newChat, { role: 'assistant', content: `Error: ${e.message}` }])
-      setThinking(false)
-    }
-  }
-
-  async function runProg(finalLogs, finalEx) {
-    await runProgression(day, finalLogs, finalEx, currentCycle)
-  }
-
-  if (sessionScreen === 'processing') return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 24, background: C.bg }}>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-      <div style={{ width: 48, height: 48, borderRadius: '50%', border: `3px solid ${C.border}`, borderTopColor: C.acc, animation: 'spin .8s linear infinite' }} />
-      <div style={{ fontSize: 18, color: C.sub, letterSpacing: 2, fontWeight: 'bold' }}>CALCULATING NEXT TARGETS...</div>
-    </div>
-  )
-
-  if (sessionScreen === 'results' && !(sessionResult?.targets?.length > 0)) return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '28px 20px 40px', background: C.bg }}>
-      <div style={{ fontSize: 15, color: C.orange, letterSpacing: 3, marginBottom: 8, fontWeight: 'bold' }}>
-        COULDN'T CALCULATE NEXT TARGETS
-      </div>
-      <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1.2, marginBottom: 16, color: C.text }}>
-        Something went wrong — your workout is safe.
-      </div>
-      <div style={{ background: '#FFF6E8', border: `0.5px solid #E8C98A`, borderRadius: 12, padding: '14px 18px', marginBottom: 20 }}>
-        <div style={{ fontSize: 15, color: C.orange, letterSpacing: 1, marginBottom: 6, fontWeight: 'bold' }}>WHAT HAPPENED</div>
-        <div style={{ fontSize: 15, color: C.text, lineHeight: 1.6 }}>
-          {sessionResult?.session_summary || 'The coach response couldn\'t be parsed.'}
-        </div>
-        <div style={{ fontSize: 14, color: C.sub, marginTop: 10, lineHeight: 1.5 }}>
-          Your logged sets are still saved. Tap RETRY to try the calculation again, or BACK TO SESSION to keep editing.
-        </div>
-      </div>
-      <button onClick={() => runProg(sessionLogs, sessionExercises)}
-        style={{ width: '100%', padding: 18, borderRadius: 14, background: C.acc, color: '#fff', fontSize: 18, fontWeight: 700, letterSpacing: 1, border: 'none', cursor: 'pointer', fontFamily: 'inherit', marginBottom: 10 }}>
-        RETRY
-      </button>
-      <button onClick={() => setSessionScreen('session')}
-        style={{ width: '100%', padding: 14, borderRadius: 14, background: 'none', color: C.sub, fontSize: 15, fontWeight: 700, letterSpacing: 1, border: `0.5px solid ${C.border}`, cursor: 'pointer', fontFamily: 'inherit' }}>
-        BACK TO SESSION
-      </button>
-    </div>
-  )
-
-  if (sessionScreen === 'results') return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '28px 20px 40px', background: C.bg }}>
-      <div style={{ fontSize: 15, color: C.acc, letterSpacing: 3, marginBottom: 8, fontWeight: 'bold' }}>
-        NEXT {day.label.toUpperCase()} — CYCLE {sessionResult?.next_cycle ?? currentCycle + 1}
-      </div>
-      <div style={{ fontSize: 36, fontWeight: 800, lineHeight: 1, marginBottom: 6, color: C.text }}>{day.label}</div>
-      {sessionResult?.session_summary && (
-        <div style={{ background: C.accLight, border: `0.5px solid #9EC4A8`, borderRadius: 12, padding: '14px 18px', margin: '18px 0 24px' }}>
-          <div style={{ fontSize: 15, color: C.acc, letterSpacing: 1, marginBottom: 6, fontWeight: 'bold' }}>COACH NOTE</div>
-          <div style={{ fontSize: 15, color: C.text, lineHeight: 1.6 }}>{sessionResult.session_summary}</div>
-        </div>
-      )}
-      <div style={{ marginBottom: 28 }}>
-        {(sessionResult?.targets || []).map((t, i) => (
-          <div key={i} style={{ borderBottom: `0.5px solid ${C.border}`, padding: '14px 0', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 16, fontWeight: 600, color: C.text }}>{t.exercise_name}</div>
-              {t.coaching_note && <div style={{ fontSize: 15, color: C.orange, marginTop: 3 }}>↳ {t.coaching_note}</div>}
-            </div>
-            <div style={{ textAlign: 'right', flexShrink: 0 }}>
-              <div style={{ fontSize: 20, color: C.acc, fontWeight: 800, fontFamily: 'monospace' }}>{fmt(t.target_weight)}lb</div>
-              <div style={{ fontSize: 15, color: C.sub, marginTop: 2 }}>
-                {t.target_sets ? t.target_sets + 'x' : 'myo '}
-                {t.target_reps_min}{t.target_reps_max !== t.target_reps_min ? '-' + t.target_reps_max : ''}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-      <button onClick={onComplete}
-        style={{ width: '100%', padding: 18, borderRadius: 14, background: C.acc, color: '#fff', fontSize: 18, fontWeight: 700, letterSpacing: 1, border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-        DONE · BACK TO HOME
-      </button>
-    </div>
-  )
-
-  return (
-    <>
-      {showPeek && <PeekModal split={split} currentDayKey={dayKey} onClose={() => setShowPeek(false)} />}
-      {showCompleteConfirm && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }} onClick={() => setShowCompleteConfirm(false)} />
-          <div onClick={e => e.stopPropagation()}
-            style={{ position: 'relative', background: C.surface, borderRadius: 20, padding: '28px 24px', width: '100%', maxWidth: 360, border: `0.5px solid ${C.border}` }}>
-            <div style={{ fontSize: 22, fontWeight: 800, color: C.text, marginBottom: 8 }}>Session complete?</div>
-            <div style={{ fontSize: 15, color: C.sub, lineHeight: 1.5, marginBottom: 24 }}>This will calculate your next session's targets.</div>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => setShowCompleteConfirm(false)}
-                style={{ flex: 1, padding: '14px 0', background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 12, color: C.sub, fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-                KEEP GOING
-              </button>
-              <button onClick={() => { setShowCompleteConfirm(false); runProg(pendingLogs, pendingEx) }}
-                style={{ flex: 1, padding: '14px 0', background: C.acc, border: 'none', borderRadius: 12, color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-                YES, DONE
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', padding: '14px 18px', borderBottom: `0.5px solid ${C.border}`, gap: 12, background: C.surface }}>
-        <button onClick={onBack} aria-label="Back"
-          style={{ background: 'none', border: 'none', color: C.sub, fontSize: 28, cursor: 'pointer', padding: '4px 8px', lineHeight: 1 }}>←</button>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 20, fontWeight: 700, color: C.text, lineHeight: 1.1 }}>{day.label}</div>
-          <div style={{ fontSize: 15, color: C.sub, marginTop: 2 }}>{day.sub} · Cycle {currentCycle}</div>
-        </div>
-        <button onClick={() => setShowPeek(true)} aria-label="View other days"
-          style={{ background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 8, color: C.muted, fontSize: 15, fontWeight: 'bold', letterSpacing: 1, padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit', marginRight: 4 }}>DAYS</button>
-        <div style={{ fontSize: 15, color: C.muted, fontFamily: 'monospace', fontWeight: 'bold' }}>{loggedCount}/{sessionExercises.length}</div>
-      </div>
-
-      <div style={{ flexShrink: 0, display: 'flex', borderBottom: `0.5px solid ${C.border}`, background: C.surface }}>
-        {['coach', 'workout'].map(t => (
-          <button key={t} onClick={() => setTab(t)}
-            style={{
-              flex: 1, border: 'none', background: 'none',
-              color: tab === t ? C.text : C.muted,
-              fontSize: 14, fontWeight: 700, letterSpacing: 2,
-              padding: '13px 0', cursor: 'pointer',
-              borderBottom: `2px solid ${tab === t ? C.acc : 'transparent'}`,
-              fontFamily: 'inherit'
-            }}>
-            {t.toUpperCase()}
-          </button>
-        ))}
-      </div>
-
-      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: C.bg }}>
-        {tab === 'coach' ? (
-          <>
-            <div ref={chatRef} style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', padding: '16px 16px 8px' }}>
-              {sessionChat.map((m, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: 12 }}>
-                  <div style={{
-                    maxWidth: '85%', padding: '12px 16px',
-                    borderRadius: m.role === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
-                    background: m.role === 'user' ? C.acc : C.surface,
-                    color: m.role === 'user' ? '#fff' : C.text,
-                    fontSize: 16, lineHeight: 1.5, fontWeight: 400,
-                    border: m.role === 'user' ? 'none' : `0.5px solid ${C.border}`
-                  }}>
-                    {m.content}
-                  </div>
-                </div>
-              ))}
-              {thinking && (
-                <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 12 }}>
-                  <div style={{ padding: '14px 20px', borderRadius: '18px 18px 18px 4px', background: C.surface, border: `0.5px solid ${C.border}`, fontSize: 20, color: C.muted, letterSpacing: 6 }}>...</div>
-                </div>
-              )}
-            </div>
-            <div style={{ padding: '10px 14px 14px', borderTop: `0.5px solid ${C.border}`, display: 'flex', gap: 10, alignItems: 'flex-end', background: C.surface }}>
-              <textarea rows={1} value={input} placeholder="Tell me what you did..."
-                onChange={e => { setInput(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px' }}
-                onFocus={() => { setTimeout(() => { if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight }, 300) }}
-                style={{ flex: 1, background: C.innerBg, border: `0.5px solid ${C.border}`, borderRadius: 12, color: C.text, fontSize: 16, padding: '12px 14px', lineHeight: 1.4, resize: 'none', outline: 'none', overflowY: 'hidden', fontFamily: 'inherit' }}
-              />
-              <button onClick={send} aria-label="Send"
-                style={{ background: C.acc, border: 'none', borderRadius: 12, width: 48, height: 48, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
-                </svg>
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
-              {sessionExercises.map((ex, i) => {
-                const logged = (sessionLogs[ex.id] || []).length > 0
-                const target = ex.type === 'straight'
-                  ? `${ex.sets}×${ex.min}${ex.max !== ex.min ? '-' + ex.max : ''} @ ${fmt(ex.w)}lb${ex.note ?? ''}`
-                  : `Myo-reps @ ${fmt(ex.w)}lb`
-                return (
-                  <div key={ex.id} style={{ display: 'flex', alignItems: 'center', padding: '16px 18px', borderBottom: `0.5px solid ${C.border}`, gap: 14, background: logged ? C.innerBg : C.surface, opacity: logged ? 0.7 : 1 }}>
-                    <div style={{ width: 28, height: 28, borderRadius: '50%', border: `1.5px solid ${logged ? C.acc : C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: logged ? C.accLight : 'transparent' }}>
-                      {logged
-                        ? <span style={{ color: C.acc, fontSize: 14, fontWeight: 'bold' }}>✓</span>
-                        : <span style={{ color: C.muted, fontSize: 15, fontWeight: 'bold' }}>{i + 1}</span>
-                      }
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 16, fontWeight: 600, color: C.text, lineHeight: 1.2 }}>{ex.name}</div>
-                      <div style={{ fontSize: 15, color: C.sub, marginTop: 4 }}>{target}</div>
-                    </div>
-                    <div style={{ fontSize: 15, color: ex.type === 'myo' ? C.orange : C.blue, letterSpacing: 1, fontWeight: 'bold', flexShrink: 0 }}>
-                      {ex.type === 'myo' ? 'MYO' : 'SETS'}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-            {/* ─── Rest Timer Bar ─── */}
-            <div style={{ flexShrink: 0, borderTop: `0.5px solid ${C.border}`, background: C.surface }}>
-              {timerEnd ? (
-                <div onClick={cancelTimer} style={{ cursor: 'pointer', padding: '12px 18px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <div style={{ fontSize: 15, color: C.muted, fontWeight: 'bold', letterSpacing: 1 }}>REST</div>
-                    <div style={{ fontSize: 26, fontWeight: 800, color: C.acc, fontFamily: 'monospace' }}>
-                      {Math.floor(timerRemaining / 60)}:{String(timerRemaining % 60).padStart(2, '0')}
-                    </div>
-                    <div style={{ fontSize: 15, color: C.muted, letterSpacing: 1 }}>TAP TO CANCEL</div>
-                  </div>
-                  <div style={{ height: 4, background: C.border, borderRadius: 2, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', background: C.acc, borderRadius: 2, transition: 'width 0.25s linear', width: `${(timerRemaining / timerDuration) * 100}%` }} />
-                  </div>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'center', padding: '10px 18px', gap: 8 }}>
-                  <div style={{ fontSize: 15, color: C.muted, fontWeight: 'bold', letterSpacing: 1, marginRight: 4 }}>REST</div>
-                  {[['60s', 60], ['90s', 90], ['2m', 120]].map(([label, secs]) => (
-                    <button key={label} onClick={() => startTimer(secs)}
-                      style={{ flex: 1, padding: '9px 0', background: C.bg, border: `0.5px solid ${C.border}`, borderRadius: 10, color: C.sub, fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </>
-        )}
-      </div>
-    </>
-  )
-}
-
-// ─── App Root ─────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// App Root
+// ═══════════════════════════════════════════════════════════════════════════
 export default function App() {
   const [screen, setScreen] = useState('home')
   const [split, setSplit] = useState(loadProgram)
@@ -934,17 +834,14 @@ export default function App() {
   const wakeLockRef = useRef(null)
   const syncTimerRef = useRef(null)
   const supabaseUserRef = useRef(null)
+
   async function acquireWakeLock() {
     try {
-      if ('wakeLock' in navigator) {
-        wakeLockRef.current = await navigator.wakeLock.request('screen')
-      }
+      if ('wakeLock' in navigator) wakeLockRef.current = await navigator.wakeLock.request('screen')
     } catch {}
   }
-  function releaseWakeLock() {
-    wakeLockRef.current?.release()
-    wakeLockRef.current = null
-  }
+  function releaseWakeLock() { wakeLockRef.current?.release(); wakeLockRef.current = null }
+
   useEffect(() => {
     function onVisible() {
       if (document.visibilityState === 'visible' && screen === 'session') acquireWakeLock()
@@ -953,7 +850,6 @@ export default function App() {
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [screen])
 
-  // ─── Supabase sync ───────────────────────────────────────────────────────────
   async function getSupabaseUser() {
     if (!supabase) return null
     if (supabaseUserRef.current) return supabaseUserRef.current
@@ -973,11 +869,7 @@ export default function App() {
       const user = await getSupabaseUser()
       if (!user) return
       try {
-        await supabase.from('swolebro_sync').upsert({
-          user_id: user.id,
-          history: hist,
-          updated_at: new Date().toISOString()
-        })
+        await supabase.from('swolebro_sync').upsert({ user_id: user.id, history: hist, updated_at: new Date().toISOString() })
       } catch {}
     }, 1000)
   }
@@ -988,9 +880,7 @@ export default function App() {
       if (!user) return
       try {
         let result = await loadProgramFromSupabase(user.id)
-
         if (!result?.program) {
-          // Migrate from localStorage if data exists there
           const hasLocalData = localStorage.getItem(PROGRAM_KEY)
           if (hasLocalData && !localStorage.getItem('supabase_migrated')) {
             await migrateToSupabase(user.id, split, progress)
@@ -998,157 +888,55 @@ export default function App() {
             result = await loadProgramFromSupabase(user.id)
           }
         }
-
         if (!result?.program) {
-          // Fresh install — seed the full program at cycle 4
           await seedUserData(user.id)
           result = await loadProgramFromSupabase(user.id)
         }
-
         if (result?.program) {
           setSplit(result.program)
           setProgressRaw(result.progress)
           saveProgress(result.progress)
         }
-      } catch (e) {
-        console.error('[supabase init]', e)
-      }
+      } catch (e) { console.error('[supabase init]', e) }
     }
     initSupabase()
   }, [])
 
+  // Session state (persisted)
   const savedSession = loadSessionState()
-  const [dayKey, setDayKey]                       = useState(savedSession?.dayKey ?? null)
-  const [sessionLogs, setSessionLogsRaw]           = useState(savedSession?.logs ?? {})
-  const [sessionChat, setSessionChatRaw]           = useState(savedSession?.chat ?? [])
+  const [dayKey, setDayKey]                   = useState(savedSession?.dayKey ?? null)
+  const [sessionLogs, setSessionLogsRaw]       = useState(savedSession?.logs ?? {})
   const [sessionExercises, setSessionExercisesRaw] = useState(savedSession?.exercises ?? [])
-  const [sessionScreen, setSessionScreenRaw]       = useState(savedSession?.sessionScreen ?? 'session')
-  const [sessionResult, setSessionResultRaw]       = useState(savedSession?.result ?? null)
+  const [sessionScreen, setSessionScreenRaw]   = useState(savedSession?.sessionScreen ?? 'session')
+  const [sessionResult, setSessionResultRaw]   = useState(savedSession?.result ?? null)
   const [supabaseSessionId, setSupabaseSessionIdRaw] = useState(savedSession?.supabaseSessionId ?? null)
 
   function persist(patch) {
-    saveSessionState({ dayKey, logs: sessionLogs, chat: sessionChat, exercises: sessionExercises, sessionScreen, result: sessionResult, supabaseSessionId, ...patch })
+    saveSessionState({ dayKey, logs: sessionLogs, exercises: sessionExercises, sessionScreen, result: sessionResult, supabaseSessionId, ...patch })
   }
-  function setSessionLogs(v)        { setSessionLogsRaw(v);        persist({ logs: v }) }
-  function setSessionChat(v)        { setSessionChatRaw(v);        persist({ chat: v }) }
-  function setSessionExercises(v)   { setSessionExercisesRaw(v);   persist({ exercises: v }) }
-  function setSessionScreen(v)      { setSessionScreenRaw(v);      persist({ sessionScreen: v }) }
-  function setSessionResult(v)      { setSessionResultRaw(v);      persist({ result: v }) }
-  function setSupabaseSessionId(v)  { setSupabaseSessionIdRaw(v);  persist({ supabaseSessionId: v }) }
+  function setSessionLogs(v)       { setSessionLogsRaw(v);       persist({ logs: v }) }
+  function setSessionExercises(v)  { setSessionExercisesRaw(v);  persist({ exercises: v }) }
+  function setSessionScreen(v)     { setSessionScreenRaw(v);     persist({ sessionScreen: v }) }
+  function setSessionResult(v)     { setSessionResultRaw(v);     persist({ result: v }) }
+  function setSupabaseSessionId(v) { setSupabaseSessionIdRaw(v); persist({ supabaseSessionId: v }) }
 
   const hasActiveSession = !!dayKey && sessionExercises.length > 0
   const currentCycle = dayKey ? (progress[dayKey]?.week ?? (dayKey === 'day_5' ? 1 : 3)) : 3
-
-  // Shared progression-calculation routine — used by both live session completion
-  // and cloud-recovery on the home screen. Handles retries, JSON sanitization, and
-  // sets the results state.
-  async function runProgression(dayObj, finalLogs, finalEx, cycle) {
-    setSessionScreenRaw('processing')
-    saveSessionState({ dayKey: dayObj?.key, logs: finalLogs, chat: sessionChat, exercises: finalEx, sessionScreen: 'processing', result: null, supabaseSessionId })
-    const userMsg = { role: 'user', content: buildProgPrompt(dayObj, finalLogs, finalEx, cycle) }
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const raw = await callClaude(PROG_SYS, [userMsg], 3000)
-        const jsonMatch = raw.match(/\{[\s\S]*\}/)
-        const jsonStr = (jsonMatch ? jsonMatch[0] : raw)
-          .replace(/[\r\n]+/g, ' ')
-          .replace(/,(\s*[}\]])/g, '$1')
-        const parsed = JSON.parse(jsonStr)
-        setSessionResult(parsed); setSessionScreen('results')
-        return
-      } catch (e) {
-        console.error(`[runProgression] attempt ${attempt + 1} failed`, e)
-        if (attempt === 1) {
-          setSessionResult({ session_summary: `Error: ${e.message}`, targets: [], flags: [], next_cycle: cycle + 1 })
-          setSessionScreen('results')
-        }
-      }
-    }
-  }
-
-  // Pulls the most recent Supabase session for a given day, reconstructs the logs
-  // in the shape the session screen expects, and kicks off progression calculation.
-  // Lets the user finish a workout whose local state was lost (e.g. after a parse
-  // error on the old build cleared the session).
-  async function recoverDay(key) {
-    const user = supabaseUserRef.current ?? await getSupabaseUser()
-    if (!user) { alert('Not connected to cloud — can\'t recover.'); return }
-    const splitDay = split[key]
-    if (!splitDay?._split_day_id) { alert('Day not found in your program.'); return }
-
-    const data = await fetchLatestSessionData(user.id, splitDay._split_day_id)
-    if (!data || !data.setLogs?.length) {
-      alert(`No cloud set logs found for ${splitDay.label}.`)
-      return
-    }
-
-    // Rebuild sessionLogs keyed by the short_id the coach uses
-    const exercises = splitDay.exercises
-    const logsByShortId = {}
-    for (const log of data.setLogs) {
-      const ex = exercises.find(e => e._exercise_id === log.exercise_id)
-      if (!ex) continue
-      if (!logsByShortId[ex.id]) logsByShortId[ex.id] = []
-      const weight = Number(log.weight)
-      if (log.set_type === 'myo_activation') {
-        logsByShortId[ex.id].push({ type: 'act', w: weight, reps: log.reps, rir: log.rir })
-      } else if (log.set_type === 'myo_mini') {
-        logsByShortId[ex.id].push({ type: 'mini', num: log.set_number, w: weight, reps: log.reps })
-      } else {
-        logsByShortId[ex.id].push({ num: log.set_number, w: weight, reps: log.reps, rir: log.rir })
-      }
-    }
-
-    const cycle = progress[key]?.week ?? 3
-    setDayKey(key)
-    setSessionLogsRaw(logsByShortId)
-    setSessionExercisesRaw(exercises)
-    setSessionChatRaw([])
-    setSessionResultRaw(null)
-    setSupabaseSessionIdRaw(data.sessionId)
-    saveSessionState({
-      dayKey: key, logs: logsByShortId, chat: [], exercises,
-      sessionScreen: 'processing', result: null, supabaseSessionId: data.sessionId,
-    })
-    setScreen('session')
-    await runProgression(splitDay, logsByShortId, exercises, cycle)
-  }
-
-  // Recover the single most recent session (any day). Uses Supabase to find which
-  // split_day it was for and delegates to recoverDay.
-  async function recoverLatest() {
-    const user = supabaseUserRef.current ?? await getSupabaseUser()
-    if (!user) { alert('Not connected to cloud — can\'t recover.'); return }
-    const latest = await fetchMostRecentSessionAny(user.id)
-    if (!latest) { alert('No sessions found in cloud.'); return }
-    // Find the dayKey for this splitDayId
-    const dayEntry = Object.entries(split).find(([, d]) => d._split_day_id === latest.splitDayId)
-    if (!dayEntry) { alert('Cloud session references an unknown day.'); return }
-    await recoverDay(dayEntry[0])
-  }
 
   async function startSession(key) {
     const day = split[key]
     const cycle = progress[key]?.week ?? (key === 'day_5' ? 1 : 3)
     const freshExercises = JSON.parse(JSON.stringify(day.exercises))
-    const isOptional = key === 'day_5'
-    const freshChat = [{
-      role: 'assistant',
-      content: `${day.label}${isOptional ? ' — optional session' : ''} · Cycle ${cycle}. ${day.exercises.length} exercises. Tell me what you do as you go. Tap WORKOUT to check your targets.`
-    }]
     setDayKey(key)
     setSessionLogsRaw({})
-    setSessionChatRaw(freshChat)
     setSessionExercisesRaw(freshExercises)
     setSessionScreenRaw('session')
     setSessionResultRaw(null)
     setSupabaseSessionIdRaw(null)
-    saveSessionState({ dayKey: key, logs: {}, chat: freshChat, exercises: freshExercises, sessionScreen: 'session', result: null, supabaseSessionId: null })
+    saveSessionState({ dayKey: key, logs: {}, exercises: freshExercises, sessionScreen: 'session', result: null, supabaseSessionId: null })
     setScreen('session')
     acquireWakeLock()
 
-    // Durable backup: create a Supabase session row so set logs have a parent.
-    // Best-effort — if this fails, the session still works via localStorage.
     const user = supabaseUserRef.current ?? await getSupabaseUser()
     if (user) {
       const newId = await createSessionRow({
@@ -1161,47 +949,42 @@ export default function App() {
     }
   }
 
-  async function completeSession() {
-    let finalSplit = split
+  function finishSessionClick() {
+    const day = split[dayKey]
+    const result = computeNextTargets(sessionExercises, sessionLogs, currentCycle)
+    setSessionResult(result)
+    setSessionScreen('results')
+  }
+
+  async function saveAndGoHome() {
+    const day = split[dayKey]
     let finalProgress = progress
     if (dayKey && sessionResult?.targets?.length > 0) {
       const nextCycle = sessionResult.next_cycle ?? (currentCycle + 1)
       const updatedSplit = JSON.parse(JSON.stringify(split))
       const dayExercises = updatedSplit[dayKey]?.exercises ?? []
       for (const target of sessionResult.targets) {
-        const ex = dayExercises.find(
-          e => e.id === target.exercise_id || e.name === target.exercise_name
-        )
-        if (ex) {
-          if (target.target_weight != null) ex.w    = target.target_weight
-          if (target.target_sets     != null) ex.sets = target.target_sets
-          if (target.target_reps_min != null) ex.min  = target.target_reps_min
-          if (target.target_reps_max != null) ex.max  = target.target_reps_max
-        }
+        const ex = dayExercises.find(e => e.id === target.exercise_id || e.name === target.exercise_name)
+        if (ex && target.target_weight != null) ex.w = target.target_weight
       }
       setSplit(updatedSplit)
-      finalSplit = updatedSplit
       const updatedProgress = { ...progress, [dayKey]: { week: nextCycle } }
       saveProgress(updatedProgress)
       setProgressRaw(updatedProgress)
       finalProgress = updatedProgress
 
-      // Write new targets to Supabase — block completion if it fails so data isn't lost
       const user = supabaseUserRef.current
       if (user) {
-        const splitDayId = split[dayKey]?._split_day_id
         try {
-          await saveSessionTargets(
-            user.id, dayKey, splitDayId,
-            sessionResult.targets, dayExercises, nextCycle
-          )
+          await saveSessionTargets(user.id, dayKey, split[dayKey]?._split_day_id, sessionResult.targets, dayExercises, nextCycle)
         } catch (e) {
           console.error('[saveSessionTargets]', e)
-          alert(`Couldn't save your progress to the cloud: ${e.message}\n\nYour session data is still here. Check your connection and try again.`)
+          alert(`Couldn't save your progress to the cloud: ${e.message}\n\nYour session data is still here.`)
           return
         }
       }
     }
+
     if (supabaseSessionId) markSessionComplete(supabaseSessionId)
 
     const newEntry = {
@@ -1209,7 +992,7 @@ export default function App() {
       dayKey,
       label: split[dayKey]?.label ?? dayKey,
       week: currentCycle,
-      summary: sessionResult?.session_summary ?? null
+      summary: sessionResult?.session_summary ?? null,
     }
     const updatedHistory = [newEntry, ...history].slice(0, 20)
     saveHistory(updatedHistory)
@@ -1219,7 +1002,6 @@ export default function App() {
     clearSessionState()
     setDayKey(null)
     setSessionLogsRaw({})
-    setSessionChatRaw([])
     setSessionExercisesRaw([])
     setSessionScreenRaw('session')
     setSessionResultRaw(null)
@@ -1227,35 +1009,72 @@ export default function App() {
     setScreen('home')
   }
 
+  async function recoverLatest() {
+    const user = supabaseUserRef.current ?? await getSupabaseUser()
+    if (!user) { alert('Not connected to cloud.'); return }
+    const latest = await fetchMostRecentSessionAny(user.id)
+    if (!latest) { alert('No cloud sessions found.'); return }
+    const dayEntry = Object.entries(split).find(([, d]) => d._split_day_id === latest.splitDayId)
+    if (!dayEntry) { alert('Cloud session references an unknown day.'); return }
+    const [key, day] = dayEntry
+    if (!latest.setLogs.length) { alert(`No set logs stored for ${day.label}.`); return }
+
+    const logsByShortId = {}
+    for (const log of latest.setLogs) {
+      const ex = day.exercises.find(e => e._exercise_id === log.exercise_id)
+      if (!ex) continue
+      if (!logsByShortId[ex.id]) logsByShortId[ex.id] = []
+      const w = Number(log.weight)
+      if (log.set_type === 'myo_activation') logsByShortId[ex.id].push({ type: 'act', w, reps: log.reps, rir: log.rir })
+      else if (log.set_type === 'myo_mini') logsByShortId[ex.id].push({ type: 'mini', num: log.set_number, w, reps: log.reps })
+      else logsByShortId[ex.id].push({ num: log.set_number, w, reps: log.reps, rir: log.rir })
+    }
+
+    const cycle = progress[key]?.week ?? 3
+    setDayKey(key)
+    setSessionLogsRaw(logsByShortId)
+    setSessionExercisesRaw(day.exercises)
+    setSessionResultRaw(null)
+    setSupabaseSessionIdRaw(latest.sessionId)
+    saveSessionState({ dayKey: key, logs: logsByShortId, exercises: day.exercises, sessionScreen: 'session', result: null, supabaseSessionId: latest.sessionId })
+    setScreen('session')
+  }
+
   return (
     <div style={{ maxWidth: 480, margin: '0 auto', height: '100dvh', background: C.bg, display: 'flex', flexDirection: 'column', color: C.text, fontFamily: '-apple-system, Arial, sans-serif' }}>
       {screen === 'home' && (
-        <HomeScreen split={split} progress={progress} history={history} onStart={startSession} onEdit={() => setScreen('edit')}
-          hasActiveSession={hasActiveSession} activeSessionKey={dayKey} onResumeSession={() => setScreen('session')}
-          onRecover={recoverDay} onRecoverLatest={recoverLatest} />
+        <HomeScreen split={split} progress={progress} history={history}
+          onStart={startSession} onEdit={() => setScreen('edit')}
+          hasActiveSession={hasActiveSession} activeSessionKey={dayKey}
+          onResumeSession={() => setScreen('session')} onRecover={recoverLatest} />
       )}
       {screen === 'edit' && (
         <EditScreen split={split} onSave={async s => {
-          setSplit(s)
-          setScreen('home')
+          setSplit(s); setScreen('home')
           const user = supabaseUserRef.current
-          if (user) {
-            migrateToSupabase(user.id, s, progress).catch(e => console.error('[EditScreen sync]', e))
-          }
+          if (user) migrateToSupabase(user.id, s, progress).catch(e => console.error('[edit sync]', e))
         }} onBack={() => setScreen('home')} />
       )}
       {screen === 'session' && dayKey && (
-        <SessionScreen
-          dayKey={dayKey} split={split} onBack={() => { releaseWakeLock(); setScreen('home') }} onComplete={completeSession}
-          currentCycle={currentCycle}
-          sessionLogs={sessionLogs}           setSessionLogs={setSessionLogs}
-          sessionChat={sessionChat}           setSessionChat={setSessionChat}
-          sessionExercises={sessionExercises} setSessionExercises={setSessionExercises}
-          sessionScreen={sessionScreen}       setSessionScreen={setSessionScreen}
-          sessionResult={sessionResult}       setSessionResult={setSessionResult}
-          supabaseSessionId={supabaseSessionId}
-          runProgression={runProgression}
-        />
+        sessionScreen === 'results' && sessionResult ? (
+          <ResultsScreen
+            day={split[dayKey]}
+            result={sessionResult}
+            currentCycle={currentCycle}
+            onDone={saveAndGoHome}
+            onBack={() => setSessionScreen('session')}
+          />
+        ) : (
+          <SessionScreen
+            dayKey={dayKey} split={split}
+            onBack={() => { releaseWakeLock(); setScreen('home') }}
+            onCompleteClick={finishSessionClick}
+            currentCycle={currentCycle}
+            sessionLogs={sessionLogs} setSessionLogs={setSessionLogs}
+            sessionExercises={sessionExercises}
+            supabaseSessionId={supabaseSessionId}
+          />
+        )
       )}
     </div>
   )
