@@ -107,6 +107,31 @@ const DEFAULT_SPLIT = {
   ]},
 }
 
+// ─── Mobility routine (15-min pre-bed wind-down) ────────────────────────────
+// Targets: tight hips / lower back / hamstrings, weak core, AND disc-golf coil
+// (thoracic rotation + hip-shoulder separation). The 🥏 moves directly train coil.
+const MOBILITY_ROUTINE = [
+  { id: 'm_catcow',  name: 'Cat-Cow',                  duration: 60,  description: 'On hands and knees. Inhale and arch (cow), exhale and round (cat). Move slow with the breath. Spinal warm-up.' },
+  { id: 'm_wgs',     name: "World's Greatest Stretch", duration: 90,  perSide: true, coil: true, description: 'Deep lunge, same-side hand inside the front foot. Drive the opposite hand to the ceiling and rotate the chest open. Hips + thoracic — pure coil.' },
+  { id: 'm_open',    name: 'Open Books',               duration: 90,  perSide: true, coil: true, description: 'Side-lying, knees stacked and pinned at 90°. Top arm sweeps across the floor in a slow arc until the shoulder blade is flat. Eyes follow the hand. Best single drill for thoracic rotation.' },
+  { id: 'm_9090',    name: '90/90 Hip Switches',       duration: 90,  description: 'Both knees bent at 90° — one shin in front, one to the side. Sit tall and rock the knees down to switch. Builds the hip internal rotation your lead leg posts on.' },
+  { id: 'm_couch',   name: 'Couch Stretch',            duration: 120, perSide: true, description: 'Back foot up on a couch or wall, front foot forward in a lunge. Squeeze the rear glute and tuck the pelvis. The desk-job hip-flexor fix.' },
+  { id: 'm_pigeon',  name: 'Pigeon Pose',              duration: 90,  perSide: true, description: 'Front shin across the mat (about 90° at the knee), back leg straight behind. Sink the chest forward and breathe into the glute.' },
+  { id: 'm_ham',     name: 'Lying Hamstring Stretch',  duration: 90,  perSide: true, description: 'On your back, lift one leg straight up. Strap around the foot or hands behind the thigh. Knee soft, foot flexed.' },
+  { id: 'm_twist',   name: 'Supine Spinal Twist',      duration: 60,  perSide: true, coil: true, description: 'On your back, drop a bent knee across the body. Opposite arm wide, gaze the other way. Lumbar release + thoracic rotation.' },
+  { id: 'm_bridge',  name: 'Glute Bridge — 10 slow',   duration: 60,  description: '10 reps. Drive through the heels, squeeze the glutes hard at the top, 2-second pause. Wakes up the posterior chain.' },
+  { id: 'm_deadbug', name: 'Dead Bug — 8 per side',    duration: 60,  description: 'On your back, arms up, knees stacked over hips. Slowly extend opposite arm and leg. Lower back stays pressed flat — anti-extension core.' },
+  { id: 'm_birddog', name: 'Bird Dog — 8 per side',    duration: 60,  description: 'Hands and knees. Reach opposite arm and leg long, hold 2 seconds. Hips stay square. Anti-rotation core — the same pattern that resists overswing.' },
+  { id: 'm_child',   name: "Child's Pose",             duration: 60,  description: 'Knees wide, big toes touching, hips back to heels, arms long. Slow 4-count in, 6-count out. Decompress and wind down.' },
+]
+const MOBILITY_DONE_KEY = 'swolebro_mobility_done'
+
+function fmtClock(s) {
+  const m = Math.floor(s / 60)
+  const ss = s % 60
+  return `${m}:${ss.toString().padStart(2, '0')}`
+}
+
 function fmt(n) {
   if (n == null) return 'TBD'
   return Number.isInteger(n) ? String(n) : parseFloat(n.toFixed(1)).toString()
@@ -123,7 +148,7 @@ function targetStr(ex) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Home Screen
 // ═══════════════════════════════════════════════════════════════════════════
-function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSession, activeSessionKey, onResumeSession, onRecover }) {
+function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSession, activeSessionKey, onResumeSession, onRecover, onMobility }) {
   const days = Object.values(split)
   const mainDays = days.filter(d => d.key !== 'day_5')
   const optDay = days.find(d => d.key === 'day_5')
@@ -195,7 +220,7 @@ function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSessio
 
       {optDay && (
         <button onClick={() => onStart('day_5')}
-          style={{ width: '100%', marginBottom: 16, padding: '18px 20px', background: C.surface, border: `0.5px dashed ${C.border}`, borderRadius: 14, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          style={{ width: '100%', marginBottom: 12, padding: '18px 20px', background: C.surface, border: `0.5px dashed ${C.border}`, borderRadius: 14, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <div style={{ fontSize: 17, fontWeight: 600, color: C.text }}>Day 5 — Optional</div>
             <div style={{ fontSize: 15, color: C.sub, marginTop: 2 }}>Arms · Abs · Weak Points</div>
@@ -203,6 +228,15 @@ function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSessio
           <div style={{ fontSize: 15, color: C.muted, fontWeight: 'bold', letterSpacing: 1 }}>CYCLE {progress['day_5']?.week ?? 1}</div>
         </button>
       )}
+
+      <button onClick={onMobility}
+        style={{ width: '100%', marginBottom: 16, padding: '18px 20px', background: C.surface, border: `0.5px solid ${C.blue}`, borderLeft: `3px solid ${C.blue}`, borderRadius: 14, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <div style={{ fontSize: 17, fontWeight: 600, color: C.text }}>Mobility · Pre-Bed</div>
+          <div style={{ fontSize: 15, color: C.sub, marginTop: 2 }}>Hips · Back · Hams · Coil · 15 min</div>
+        </div>
+        <div style={{ fontSize: 15, color: C.blue, fontWeight: 'bold', letterSpacing: 1 }}>WIND DOWN</div>
+      </button>
 
       <button onClick={onEdit}
         style={{ width: '100%', padding: '14px 0', background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 14, color: C.muted, fontSize: 15, fontWeight: 'bold', letterSpacing: 2, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 10 }}>
@@ -822,6 +856,175 @@ function EditScreen({ split, onSave, onBack }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Mobility Screen (15-min pre-bed wind-down)
+// ═══════════════════════════════════════════════════════════════════════════
+function MobilityScreen({ onBack }) {
+  const totalSeconds = MOBILITY_ROUTINE.reduce((sum, m) => sum + m.duration, 0)
+
+  // Auto-reset completion if the stored entries are from a previous day
+  const [completed, setCompletedRaw] = useState(() => {
+    const stored = safeParse(localStorage.getItem(MOBILITY_DONE_KEY), {})
+    const today = new Date().toDateString()
+    const isStale = Object.values(stored).some(ts => new Date(ts).toDateString() !== today)
+    if (isStale) {
+      try { localStorage.removeItem(MOBILITY_DONE_KEY) } catch {}
+      return {}
+    }
+    return stored
+  })
+
+  const [activeId, setActiveId] = useState(null)
+  const [secondsLeft, setSecondsLeft] = useState(0)
+  const [running, setRunning] = useState(false)
+
+  function setCompleted(next) {
+    setCompletedRaw(next)
+    try { localStorage.setItem(MOBILITY_DONE_KEY, JSON.stringify(next)) } catch {}
+  }
+
+  function startMove(move) {
+    setActiveId(move.id)
+    setSecondsLeft(move.duration)
+    setRunning(true)
+  }
+
+  function markDone(id) {
+    setCompleted({ ...completed, [id]: Date.now() })
+    if (activeId === id) { setActiveId(null); setRunning(false); setSecondsLeft(0) }
+    if (navigator.vibrate) navigator.vibrate(40)
+  }
+
+  function unmark(id) {
+    const next = { ...completed }
+    delete next[id]
+    setCompleted(next)
+  }
+
+  function resetAll() {
+    setCompleted({})
+    setActiveId(null); setRunning(false); setSecondsLeft(0)
+  }
+
+  useEffect(() => {
+    if (!running) return
+    if (secondsLeft <= 0) {
+      if (activeId) {
+        setCompleted({ ...completed, [activeId]: Date.now() })
+        if (navigator.vibrate) navigator.vibrate([60, 40, 60])
+        setActiveId(null); setRunning(false); setSecondsLeft(0)
+      }
+      return
+    }
+    const t = setTimeout(() => setSecondsLeft(s => s - 1), 1000)
+    return () => clearTimeout(t)
+  }, [running, secondsLeft, activeId])
+
+  const doneCount = Object.keys(completed).length
+  const allDone = doneCount === MOBILITY_ROUTINE.length
+
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: '36px 20px 40px', background: C.bg }}>
+      <button onClick={onBack}
+        style={{ background: 'none', border: 'none', color: C.muted, fontSize: 15, fontWeight: 'bold', letterSpacing: 2, cursor: 'pointer', padding: '0 0 16px', fontFamily: 'inherit' }}>
+        ← BACK
+      </button>
+
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 15, color: C.acc, letterSpacing: 4, marginBottom: 8, fontWeight: 'bold' }}>WIND-DOWN MOBILITY</div>
+        <div style={{ fontSize: 28, fontWeight: 700, color: C.text, lineHeight: 1.2 }}>15-Minute Pre-Bed</div>
+        <div style={{ fontSize: 14, color: C.sub, marginTop: 4 }}>Hips · Lower back · Hamstrings · Core · Disc-golf coil</div>
+      </div>
+
+      <div style={{ background: C.surface, border: `0.5px solid ${C.border}`, borderRadius: 12, padding: '14px 16px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <div style={{ fontSize: 12, color: C.muted, letterSpacing: 1, fontWeight: 'bold' }}>PROGRESS</div>
+          <div style={{ fontSize: 17, color: C.text, fontWeight: 700 }}>{doneCount} / {MOBILITY_ROUTINE.length} moves</div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: 12, color: C.muted, letterSpacing: 1, fontWeight: 'bold' }}>TOTAL</div>
+          <div style={{ fontSize: 17, color: C.text, fontWeight: 700 }}>{Math.round(totalSeconds / 60)} min</div>
+        </div>
+      </div>
+
+      {allDone && (
+        <div style={{ background: C.accLight, border: `1px solid ${C.acc}`, borderRadius: 12, padding: '14px 16px', marginBottom: 16, color: C.acc, fontWeight: 700, fontSize: 15, textAlign: 'center', letterSpacing: 1 }}>
+          NICE — ALL DONE. SLEEP WELL.
+        </div>
+      )}
+
+      {MOBILITY_ROUTINE.map(move => {
+        const isDone = !!completed[move.id]
+        const isActive = activeId === move.id
+        const accent = isActive ? C.acc : isDone ? C.acc : C.border
+        return (
+          <div key={move.id}
+            style={{ background: isDone ? C.innerBg : C.surface, border: `0.5px solid ${isActive ? C.acc : C.border}`, borderLeft: `3px solid ${accent}`, borderRadius: 12, padding: '14px 16px', marginBottom: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <div style={{ fontSize: 16, fontWeight: 600, color: C.text }}>{move.name}</div>
+                  {move.coil && (
+                    <div style={{ fontSize: 10, color: C.orange, letterSpacing: 1, fontWeight: 'bold', border: `0.5px solid ${C.orange}`, padding: '2px 6px', borderRadius: 4 }}>COIL</div>
+                  )}
+                </div>
+                <div style={{ fontSize: 14, color: C.sub, marginTop: 4, lineHeight: 1.4 }}>{move.description}</div>
+              </div>
+              <div style={{ flexShrink: 0, textAlign: 'right' }}>
+                <div style={{ fontSize: 13, color: C.blue, fontWeight: 700, letterSpacing: 1 }}>{fmtClock(move.duration)}</div>
+                {move.perSide && (
+                  <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, letterSpacing: 1, marginTop: 2 }}>BOTH SIDES</div>
+                )}
+              </div>
+            </div>
+
+            {isActive ? (
+              <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ flex: 1, fontSize: 28, fontWeight: 700, color: C.acc, fontFamily: 'monospace', textAlign: 'center', background: C.innerBg, borderRadius: 8, padding: '8px 0' }}>
+                  {fmtClock(secondsLeft)}
+                </div>
+                <button onClick={() => setRunning(r => !r)}
+                  style={{ padding: '12px 14px', background: C.surface, border: `0.5px solid ${C.border}`, borderRadius: 10, color: C.text, fontSize: 13, fontWeight: 700, letterSpacing: 1, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  {running ? 'PAUSE' : 'RESUME'}
+                </button>
+                <button onClick={() => markDone(move.id)}
+                  style={{ padding: '12px 14px', background: C.acc, border: 'none', borderRadius: 10, color: '#fff', fontSize: 13, fontWeight: 700, letterSpacing: 1, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  DONE
+                </button>
+              </div>
+            ) : (
+              <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+                <button onClick={() => startMove(move)}
+                  style={{ flex: 1, padding: '11px 0', background: isDone ? 'none' : C.acc, border: isDone ? `0.5px solid ${C.border}` : 'none', borderRadius: 10, color: isDone ? C.sub : '#fff', fontSize: 14, fontWeight: 700, letterSpacing: 1, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  {isDone ? 'REDO' : 'START'}
+                </button>
+                {isDone ? (
+                  <button onClick={() => unmark(move.id)}
+                    style={{ padding: '11px 16px', background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 10, color: C.acc, fontSize: 14, fontWeight: 700, letterSpacing: 1, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    ✓
+                  </button>
+                ) : (
+                  <button onClick={() => markDone(move.id)}
+                    style={{ padding: '11px 16px', background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 10, color: C.muted, fontSize: 14, fontWeight: 700, letterSpacing: 1, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    SKIP
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )
+      })}
+
+      {doneCount > 0 && (
+        <button onClick={resetAll}
+          style={{ width: '100%', marginTop: 16, padding: '14px 0', background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 14, color: C.muted, fontSize: 14, fontWeight: 'bold', letterSpacing: 2, cursor: 'pointer', fontFamily: 'inherit' }}>
+          RESET ROUTINE
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // App Root
 // ═══════════════════════════════════════════════════════════════════════════
 export default function App() {
@@ -1046,7 +1249,11 @@ export default function App() {
         <HomeScreen split={split} progress={progress} history={history}
           onStart={startSession} onEdit={() => setScreen('edit')}
           hasActiveSession={hasActiveSession} activeSessionKey={dayKey}
-          onResumeSession={() => setScreen('session')} onRecover={recoverLatest} />
+          onResumeSession={() => setScreen('session')} onRecover={recoverLatest}
+          onMobility={() => setScreen('mobility')} />
+      )}
+      {screen === 'mobility' && (
+        <MobilityScreen onBack={() => setScreen('home')} />
       )}
       {screen === 'edit' && (
         <EditScreen split={split} onSave={async s => {
