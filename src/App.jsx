@@ -52,14 +52,14 @@ const C = {
 // ─── Default program (used on fresh install before Supabase seed) ───────────
 const DEFAULT_SPLIT = {
   push_a: { key: 'push_a', label: 'Push A', sub: 'Incline Chest · Shoulders · Triceps · Legs', exercises: [
-    { id: 'pa_inc',      name: 'Nautilus PL Incline Bench',      type: 'straight', sets: 4, min: 8,  max: 8,  w: 90,   note: '/side' },
+    { id: 'pa_inc',      name: 'Nautilus PL Incline Bench',      type: 'straight', sets: 4, min: 8,  max: 8,  w: 45,   note: '/side' },
     { id: 'pa_db_inc',   name: 'DB 45 Degree Incline',           type: 'straight', sets: 3, min: 10, max: 12, w: 55 },
     { id: 'pa_seat_pr',  name: 'Nautilus PL Seated Press',       type: 'straight', sets: 3, min: 10, max: 10, w: 60,   note: '/side' },
     { id: 'pa_fly',      name: 'Arsenal Fly Machine',            type: 'myo',      w: 30 },
     { id: 'pa_lat_r',    name: 'Arsenal Lateral Raises',         type: 'myo',      w: 40 },
     { id: 'pa_rope_oh',  name: 'Cable Rope Overhead Extension',  type: 'straight', sets: 3, min: 12, max: 12, w: 45 },
     { id: 'pa_pushdn',   name: 'Tricep Pushdowns',               type: 'myo',      w: 54 },
-    { id: 'pa_leg_pr',   name: 'Nautilus Xpload Leg Press',      type: 'straight', sets: 3, min: 10, max: 10, w: 135,  note: '/side' },
+    { id: 'pa_leg_pr',   name: 'Nautilus Xpload Leg Press Incline', type: 'straight', sets: 3, min: 10, max: 10, w: 90,   note: '/side' },
     { id: 'pa_leg_ext',  name: 'Nautilus Leg Extensions',        type: 'myo',      w: 120 },
     { id: 'pa_woodchop', name: 'Cable Woodchop',                 type: 'straight', sets: 2, min: 12, max: 12, w: null, note: '/side' },
   ]},

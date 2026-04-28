@@ -33,7 +33,7 @@ export async function seedUserData(userId) {
     { day: 'push_a', ex: 'Arsenal Lateral Raises',          sid: 'pa_lat_r',    type: 'myo',      sets: null, min: 12, max: 15, order: 5 },
     { day: 'push_a', ex: 'Cable Rope Overhead Extension',   sid: 'pa_rope_oh',  type: 'straight', sets: 3, min: 12, max: 12, order: 6 },
     { day: 'push_a', ex: 'Tricep Pushdowns',                sid: 'pa_pushdn',   type: 'myo',      sets: null, min: 12, max: 15, order: 7 },
-    { day: 'push_a', ex: 'Nautilus Xpload Leg Press',       sid: 'pa_leg_pr',   type: 'straight', sets: 3, min: 10, max: 10, order: 8,  note: '/side' },
+    { day: 'push_a', ex: 'Nautilus Xpload Leg Press Incline', sid: 'pa_leg_pr',   type: 'straight', sets: 3, min: 10, max: 10, order: 8,  note: '/side' },
     { day: 'push_a', ex: 'Nautilus Leg Extensions',         sid: 'pa_leg_ext',  type: 'myo',      sets: null, min: 12, max: 15, order: 9 },
     { day: 'push_a', ex: 'Cable Woodchop',                  sid: 'pa_woodchop', type: 'straight', sets: 2, min: 12, max: 12, order: 10, note: '/side' },
 
@@ -101,14 +101,14 @@ export async function seedUserData(userId) {
   // Cycle 4 targets
   const cycle4Targets = [
     // PUSH A
-    { day: 'push_a', ex: 'Nautilus PL Incline Bench',     w: 90,   sets: 4, min: 8,  max: 8,  rir: 2, type: 'straight' },
+    { day: 'push_a', ex: 'Nautilus PL Incline Bench',     w: 45,   sets: 4, min: 8,  max: 8,  rir: 2, type: 'straight' },
     { day: 'push_a', ex: 'DB 45 Degree Incline',           w: 55,   sets: 3, min: 10, max: 12, rir: 2, type: 'straight' },
     { day: 'push_a', ex: 'Nautilus PL Seated Press',       w: 60,   sets: 3, min: 10, max: 10, rir: 2, type: 'straight' },
     { day: 'push_a', ex: 'Arsenal Fly Machine',            w: 30,   sets: null, min: 12, max: 15, rir: 1, type: 'myo' },
     { day: 'push_a', ex: 'Arsenal Lateral Raises',         w: 40,   sets: null, min: 12, max: 15, rir: 1, type: 'myo' },
     { day: 'push_a', ex: 'Cable Rope Overhead Extension',  w: 45,   sets: 3, min: 12, max: 12, rir: 2, type: 'straight' },
     { day: 'push_a', ex: 'Tricep Pushdowns',               w: 54,   sets: null, min: 12, max: 15, rir: 1, type: 'myo' },
-    { day: 'push_a', ex: 'Nautilus Xpload Leg Press',      w: 135,  sets: 3, min: 10, max: 10, rir: 2, type: 'straight' },
+    { day: 'push_a', ex: 'Nautilus Xpload Leg Press Incline', w: 90,   sets: 3, min: 10, max: 10, rir: 2, type: 'straight' },
     { day: 'push_a', ex: 'Nautilus Leg Extensions',        w: 120,  sets: null, min: 12, max: 15, rir: 1, type: 'myo' },
 
     // PUSH B
