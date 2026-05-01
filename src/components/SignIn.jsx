@@ -8,56 +8,39 @@ const C = {
 }
 
 export default function SignIn() {
-  const [step, setStep] = useState('email')   // 'email' | 'code'
   const [email, setEmail] = useState('')
-  const [code, setCode] = useState('')
+  const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
-  const [info, setInfo] = useState(null)
 
-  async function sendCode(e) {
+  async function submit(e) {
     e?.preventDefault?.()
-    if (!email.trim() || busy) return
-    setBusy(true); setError(null); setInfo(null)
+    if (!email.trim() || !password || busy) return
+    setBusy(true); setError(null)
+
     try {
-      const { error } = await supabase.auth.signInWithOtp({
+      // Try sign in first.
+      const { error: signInErr } = await supabase.auth.signInWithPassword({
         email: email.trim(),
-        options: {
-          shouldCreateUser: true,
-          emailRedirectTo: window.location.origin,
-        },
+        password,
       })
-      if (error) throw error
-      setStep('code')
-      setInfo('Check your inbox. Paste the 6-digit code, or tap the link.')
+      if (!signInErr) return  // auth listener in App takes over
+
+      // No account yet → create one.
+      if (signInErr.message?.toLowerCase().includes('invalid login credentials')) {
+        const { error: signUpErr } = await supabase.auth.signUp({
+          email: email.trim(),
+          password,
+        })
+        if (signUpErr) throw signUpErr
+        return  // session created, listener takes over
+      }
+
+      throw signInErr
     } catch (err) {
-      setError(err.message || 'Could not send code. Try again.')
-    } finally {
+      setError(err.message || 'Could not sign in.')
       setBusy(false)
     }
-  }
-
-  async function verifyCode(e) {
-    e?.preventDefault?.()
-    const token = code.trim()
-    if (!token || busy) return
-    setBusy(true); setError(null); setInfo(null)
-    try {
-      const { error } = await supabase.auth.verifyOtp({
-        email: email.trim(),
-        token,
-        type: 'email',
-      })
-      if (error) throw error
-      // Auth listener in App will pick up the session and re-render.
-    } catch (err) {
-      setError(err.message || 'Invalid or expired code.')
-      setBusy(false)
-    }
-  }
-
-  function startOver() {
-    setStep('email'); setCode(''); setError(null); setInfo(null)
   }
 
   return (
@@ -67,69 +50,39 @@ export default function SignIn() {
           <div style={{ fontSize: 15, color: C.acc, letterSpacing: 4, marginBottom: 8, fontWeight: 'bold' }}>SWOLEBRO TRAINING</div>
           <div style={{ fontSize: 28, fontWeight: 700, color: C.text, lineHeight: 1.2 }}>Sign in</div>
           <div style={{ fontSize: 14, color: C.sub, marginTop: 4 }}>
-            {step === 'email'
-              ? 'Enter your email — we’ll send you a 6-digit code.'
-              : `Code sent to ${email}`}
+            First time? Just enter an email and password — your account is created on the spot.
           </div>
         </div>
 
-        {step === 'email' && (
-          <form onSubmit={sendCode}>
-            <input
-              type="email"
-              autoComplete="email"
-              autoFocus
-              inputMode="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              style={inputStyle}
-            />
-            <button type="submit" disabled={busy || !email.trim()} style={btnStyle(busy)}>
-              {busy ? 'Sending…' : 'Send code'}
-            </button>
-          </form>
-        )}
+        <form onSubmit={submit}>
+          <input
+            type="email"
+            autoComplete="email"
+            autoFocus
+            inputMode="email"
+            placeholder="Email"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            style={inputStyle}
+          />
+          <input
+            type="password"
+            autoComplete="current-password"
+            placeholder="Password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            style={inputStyle}
+          />
+          <button type="submit" disabled={busy || !email.trim() || !password} style={btnStyle(busy)}>
+            {busy ? 'Signing in…' : 'Sign in'}
+          </button>
+        </form>
 
-        {step === 'code' && (
-          <form onSubmit={verifyCode}>
-            <input
-              type="text"
-              autoComplete="one-time-code"
-              autoFocus
-              inputMode="numeric"
-              pattern="[0-9]*"
-              maxLength={6}
-              placeholder="123456"
-              value={code}
-              onChange={e => setCode(e.target.value.replace(/\D/g, ''))}
-              style={{ ...inputStyle, fontSize: 22, letterSpacing: 6, textAlign: 'center' }}
-            />
-            <button type="submit" disabled={busy || code.length < 6} style={btnStyle(busy)}>
-              {busy ? 'Verifying…' : 'Verify code'}
-            </button>
-            <button type="button" onClick={startOver} disabled={busy}
-              style={{ ...btnStyle(busy), background: 'transparent', color: C.sub, marginTop: 8, border: 'none' }}>
-              Use a different email
-            </button>
-          </form>
-        )}
-
-        {info && (
-          <div style={{ marginTop: 20, padding: '12px 14px', background: '#EAF3DE', border: `1px solid ${C.acc}`, borderRadius: 10, color: C.acc, fontSize: 14 }}>
-            {info}
-          </div>
-        )}
         {error && (
           <div style={{ marginTop: 20, padding: '12px 14px', background: '#FBE9E7', border: `1px solid ${C.red}`, borderRadius: 10, color: C.red, fontSize: 14 }}>
             {error}
           </div>
         )}
-
-        <div style={{ marginTop: 40, fontSize: 13, color: C.muted, lineHeight: 1.5 }}>
-          On iOS Safari private tabs the link may open in your default browser.
-          The 6-digit code keeps you in this tab.
-        </div>
       </div>
     </div>
   )
