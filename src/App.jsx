@@ -3,6 +3,7 @@ import { supabase } from './utils/supabaseClient'
 import { migrateToSupabase } from './utils/migrateToSupabase'
 import { loadProgramFromSupabase, saveSessionTargets } from './utils/loadProgramFromSupabase'
 import { seedUserData } from './utils/seedUserData'
+import SignIn from './components/SignIn'
 import {
   createSessionRow,
   writeExerciseSets,
@@ -148,7 +149,7 @@ function targetStr(ex) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Home Screen
 // ═══════════════════════════════════════════════════════════════════════════
-function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSession, activeSessionKey, onResumeSession, onRecover, onMobility }) {
+function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSession, activeSessionKey, onResumeSession, onRecover, onMobility, userEmail, onSignOut }) {
   const days = Object.values(split)
   const mainDays = days.filter(d => d.key !== 'day_5')
   const optDay = days.find(d => d.key === 'day_5')
@@ -161,6 +162,15 @@ function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSessio
         <div style={{ fontSize: 15, color: C.acc, letterSpacing: 4, marginBottom: 8, fontWeight: 'bold' }}>SWOLEBRO TRAINING</div>
         <div style={{ fontSize: 28, fontWeight: 700, color: C.text, lineHeight: 1.2 }}>Lake Bod 2026</div>
         <div style={{ fontSize: 14, color: C.sub, marginTop: 4 }}>Mesocycle {MESO} · RP Method</div>
+        {userEmail && (
+          <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>
+            {userEmail} ·{' '}
+            <button onClick={onSignOut}
+              style={{ background: 'none', border: 'none', color: C.muted, textDecoration: 'underline', cursor: 'pointer', padding: 0, fontSize: 12, fontFamily: 'inherit' }}>
+              sign out
+            </button>
+          </div>
+        )}
       </div>
 
       {hasActiveSession && (
@@ -1038,6 +1048,32 @@ export default function App() {
   const syncTimerRef = useRef(null)
   const supabaseUserRef = useRef(null)
 
+  // Real auth state (Stage 2). Replaces the prior anonymous-auth path.
+  const [user, setUser] = useState(null)
+  const [authReady, setAuthReady] = useState(false)
+
+  useEffect(() => {
+    if (!supabase) { setAuthReady(true); return }
+    let mounted = true
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!mounted) return
+      setUser(session?.user ?? null)
+      setAuthReady(true)
+    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null)
+      setAuthReady(true)
+    })
+    return () => { mounted = false; subscription.unsubscribe() }
+  }, [])
+
+  // Keep ref in sync so existing callsites that read supabaseUserRef.current keep working.
+  useEffect(() => { supabaseUserRef.current = user }, [user])
+
+  async function signOut() {
+    try { await supabase?.auth.signOut() } catch (e) { console.error('[signOut]', e) }
+  }
+
   async function acquireWakeLock() {
     try {
       if ('wakeLock' in navigator) wakeLockRef.current = await navigator.wakeLock.request('screen')
@@ -1054,15 +1090,7 @@ export default function App() {
   }, [screen])
 
   async function getSupabaseUser() {
-    if (!supabase) return null
-    if (supabaseUserRef.current) return supabaseUserRef.current
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session?.user) { supabaseUserRef.current = session.user; return session.user }
-      const { data } = await supabase.auth.signInAnonymously()
-      supabaseUserRef.current = data.user
-      return data.user
-    } catch { return null }
+    return supabaseUserRef.current
   }
 
   function scheduleSync(hist) {
@@ -1078,9 +1106,8 @@ export default function App() {
   }
 
   useEffect(() => {
+    if (!user) return
     async function initSupabase() {
-      const user = await getSupabaseUser()
-      if (!user) return
       try {
         let result = await loadProgramFromSupabase(user.id)
         if (!result?.program) {
@@ -1103,7 +1130,7 @@ export default function App() {
       } catch (e) { console.error('[supabase init]', e) }
     }
     initSupabase()
-  }, [])
+  }, [user?.id])
 
   // Session state (persisted)
   const savedSession = loadSessionState()
@@ -1243,6 +1270,22 @@ export default function App() {
     setScreen('session')
   }
 
+  if (!supabase) {
+    return (
+      <div style={{ maxWidth: 480, margin: '0 auto', height: '100dvh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, color: C.red, fontFamily: '-apple-system, Arial, sans-serif' }}>
+        Supabase env vars missing. Check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.
+      </div>
+    )
+  }
+  if (!authReady) {
+    return (
+      <div style={{ maxWidth: 480, margin: '0 auto', height: '100dvh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.muted, fontFamily: '-apple-system, Arial, sans-serif' }}>
+        Loading…
+      </div>
+    )
+  }
+  if (!user) return <SignIn />
+
   return (
     <div style={{ maxWidth: 480, margin: '0 auto', height: '100dvh', background: C.bg, display: 'flex', flexDirection: 'column', color: C.text, fontFamily: '-apple-system, Arial, sans-serif' }}>
       {screen === 'home' && (
@@ -1250,7 +1293,8 @@ export default function App() {
           onStart={startSession} onEdit={() => setScreen('edit')}
           hasActiveSession={hasActiveSession} activeSessionKey={dayKey}
           onResumeSession={() => setScreen('session')} onRecover={recoverLatest}
-          onMobility={() => setScreen('mobility')} />
+          onMobility={() => setScreen('mobility')}
+          userEmail={user.email} onSignOut={signOut} />
       )}
       {screen === 'mobility' && (
         <MobilityScreen onBack={() => setScreen('home')} />
