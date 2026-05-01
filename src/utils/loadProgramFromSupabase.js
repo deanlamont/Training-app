@@ -128,3 +128,120 @@ export async function saveSessionTargets(userId, dayKey, splitDayId, targets, ex
     .eq('id', splitDayId)
   if (wkErr) throw new Error(`Cycle bump failed: ${wkErr.message}`)
 }
+
+const DAY_ORDER = { push_a: 1, push_b: 2, pull_a: 3, pull_b: 4, day_5: 5 }
+
+/**
+ * Persists an edited program back to Supabase. Replaces split_day_exercises
+ * for each day (delete + insert) and upserts current-week progression_targets.
+ */
+export async function saveProgramToSupabase(userId, program, progress) {
+  if (!supabase || !userId) return
+
+  const { data: exercises, error: exErr } = await supabase
+    .from('exercises')
+    .select('id, name')
+  if (exErr || !exercises?.length) {
+    throw new Error('exercises master table empty or unreachable')
+  }
+  const exMap = Object.fromEntries(exercises.map(e => [e.name, e.id]))
+
+  for (const [dayKey, day] of Object.entries(program)) {
+    const currentWeek = progress[dayKey]?.week ?? 4
+
+    const { data: dayRow, error: dayErr } = await supabase
+      .from('split_days')
+      .upsert(
+        {
+          user_id: userId,
+          day_key: dayKey,
+          day_label: day.label,
+          subtitle: day.sub ?? null,
+          sort_order: DAY_ORDER[dayKey] ?? 99,
+          current_week: currentWeek,
+        },
+        { onConflict: 'user_id,day_key' }
+      )
+      .select()
+      .single()
+    if (dayErr) throw new Error(`split_days upsert failed (${dayKey}): ${dayErr.message}`)
+
+    await supabase.from('split_day_exercises').delete().eq('split_day_id', dayRow.id)
+
+    const sdeRows = []
+    for (let i = 0; i < day.exercises.length; i++) {
+      const ex = day.exercises[i]
+      const exerciseId = exMap[ex.name]
+      if (!exerciseId) {
+        console.warn(`[saveProgram] Exercise not in master table: "${ex.name}" — skipped`)
+        continue
+      }
+      sdeRows.push({
+        split_day_id: dayRow.id,
+        exercise_id: exerciseId,
+        set_type: ex.type,
+        target_sets: ex.sets ?? null,
+        target_reps_min: ex.min,
+        target_reps_max: ex.max,
+        sort_order: i + 1,
+        note: ex.note ?? null,
+        short_id: ex.id,
+      })
+    }
+    if (sdeRows.length) {
+      const { error: sdeErr } = await supabase.from('split_day_exercises').insert(sdeRows)
+      if (sdeErr) throw new Error(`split_day_exercises insert failed (${dayKey}): ${sdeErr.message}`)
+    }
+
+    const targetRows = day.exercises
+      .filter(ex => ex.w != null && exMap[ex.name])
+      .map(ex => ({
+        user_id: userId,
+        exercise_id: exMap[ex.name],
+        split_day_id: dayRow.id,
+        week_number: currentWeek,
+        mesocycle: 1,
+        target_weight: ex.w,
+        target_sets: ex.sets ?? null,
+        target_reps_min: ex.min,
+        target_reps_max: ex.max,
+        target_rir: 2,
+        set_type: ex.type,
+        source: 'edit',
+      }))
+    if (targetRows.length) {
+      const { error: tErr } = await supabase
+        .from('progression_targets')
+        .upsert(targetRows, {
+          onConflict: 'user_id,exercise_id,split_day_id,week_number,mesocycle',
+        })
+      if (tErr) throw new Error(`progression_targets upsert failed (${dayKey}): ${tErr.message}`)
+    }
+  }
+}
+
+/**
+ * Builds the home-screen "RECENT" history list from completed sessions.
+ * Returns the most recent 20, newest first.
+ */
+export async function loadHistoryFromSupabase(userId) {
+  if (!supabase || !userId) return []
+  const { data, error } = await supabase
+    .from('sessions')
+    .select('week_number, completed_at, notes, split_days ( day_key, day_label )')
+    .eq('user_id', userId)
+    .not('completed_at', 'is', null)
+    .order('completed_at', { ascending: false })
+    .limit(20)
+  if (error) {
+    console.error('[loadHistoryFromSupabase]', error)
+    return []
+  }
+  return (data ?? []).map(r => ({
+    date: r.completed_at,
+    dayKey: r.split_days?.day_key ?? null,
+    label: r.split_days?.day_label ?? '(unknown)',
+    week: r.week_number,
+    summary: r.notes ?? null,
+  }))
+}

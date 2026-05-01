@@ -1,45 +1,23 @@
 import { useState, useRef, useEffect } from 'react'
 import { supabase } from './utils/supabaseClient'
-import { migrateToSupabase } from './utils/migrateToSupabase'
-import { loadProgramFromSupabase, saveSessionTargets } from './utils/loadProgramFromSupabase'
+import {
+  loadProgramFromSupabase,
+  saveSessionTargets,
+  saveProgramToSupabase,
+  loadHistoryFromSupabase,
+} from './utils/loadProgramFromSupabase'
 import { seedUserData } from './utils/seedUserData'
 import SignIn from './components/SignIn'
 import {
   createSessionRow,
   writeExerciseSets,
   markSessionComplete,
-  fetchLatestSessionData,
   fetchMostRecentSessionAny,
 } from './utils/sessionSync'
 import { computeNextTargets } from './utils/progression'
 
 const APP_VERSION = 'v2026-04-24-rebuild'
 const MESO = 1
-
-// ─── Storage helpers ─────────────────────────────────────────────────────────
-const HISTORY_KEY = 'swolebro_history'
-const PROGRESS_KEY = 'swolebro_progress'
-const PROGRAM_KEY = 'swolebro_program'
-const SESSION_KEY = 'swolebro_session'
-
-const DEFAULT_PROGRESS = {
-  push_a: { week: 4 }, push_b: { week: 4 },
-  pull_a: { week: 4 }, pull_b: { week: 4 },
-  day_5:  { week: 4 },
-}
-
-function safeParse(str, fallback) {
-  try { return str ? JSON.parse(str) : fallback } catch { return fallback }
-}
-function loadHistory()         { return safeParse(localStorage.getItem(HISTORY_KEY), []) }
-function saveHistory(h)        { try { localStorage.setItem(HISTORY_KEY, JSON.stringify(h)) } catch (e) { console.error(e) } }
-function loadProgress()        { return safeParse(localStorage.getItem(PROGRESS_KEY), { ...DEFAULT_PROGRESS }) }
-function saveProgress(p)       { try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(p)) } catch (e) { console.error(e) } }
-function loadProgram()         { return safeParse(localStorage.getItem(PROGRAM_KEY), null) ?? JSON.parse(JSON.stringify(DEFAULT_SPLIT)) }
-function saveProgram(s)        { try { localStorage.setItem(PROGRAM_KEY, JSON.stringify(s)) } catch (e) { console.error(e) } }
-function loadSessionState()    { return safeParse(localStorage.getItem(SESSION_KEY), null) }
-function saveSessionState(s)   { try { localStorage.setItem(SESSION_KEY, JSON.stringify(s)) } catch (e) { console.error(e) } }
-function clearSessionState()   { try { localStorage.removeItem(SESSION_KEY) } catch {} }
 
 // ─── Theme ───────────────────────────────────────────────────────────────────
 const C = {
@@ -48,64 +26,6 @@ const C = {
   acc: '#2D6A4F', accLight: '#EAF3DE',
   blue: '#185FA5', orange: '#854F0B', red: '#B04040',
   innerBg: '#F9F6F1',
-}
-
-// ─── Default program (used on fresh install before Supabase seed) ───────────
-const DEFAULT_SPLIT = {
-  push_a: { key: 'push_a', label: 'Push A', sub: 'Incline Chest · Shoulders · Triceps · Legs', exercises: [
-    { id: 'pa_inc',      name: 'Nautilus PL Incline Bench',      type: 'straight', sets: 4, min: 8,  max: 8,  w: 45,   note: '/side' },
-    { id: 'pa_db_inc',   name: 'DB 45 Degree Incline',           type: 'straight', sets: 3, min: 10, max: 12, w: 55 },
-    { id: 'pa_seat_pr',  name: 'Nautilus PL Seated Press',       type: 'straight', sets: 3, min: 10, max: 10, w: 60,   note: '/side' },
-    { id: 'pa_fly',      name: 'Arsenal Fly Machine',            type: 'myo',      w: 30 },
-    { id: 'pa_lat_r',    name: 'Arsenal Lateral Raises',         type: 'myo',      w: 40 },
-    { id: 'pa_rope_oh',  name: 'Cable Rope Overhead Extension',  type: 'straight', sets: 3, min: 12, max: 12, w: 45 },
-    { id: 'pa_pushdn',   name: 'Tricep Pushdowns',               type: 'myo',      w: 54 },
-    { id: 'pa_leg_pr',   name: 'Nautilus Xpload Leg Press Incline', type: 'straight', sets: 3, min: 10, max: 10, w: 90,   note: '/side' },
-    { id: 'pa_leg_ext',  name: 'Nautilus Leg Extensions',        type: 'myo',      w: 120 },
-    { id: 'pa_woodchop', name: 'Cable Woodchop',                 type: 'straight', sets: 2, min: 12, max: 12, w: null, note: '/side' },
-  ]},
-  push_b: { key: 'push_b', label: 'Push B', sub: 'Flat Chest · Shoulders · Triceps · Legs', exercises: [
-    { id: 'pb_flat',     name: 'Nautilus PL Flat Bench',         type: 'straight', sets: 4, min: 8,  max: 10, w: 60,   note: '/side' },
-    { id: 'pb_db_flat',  name: 'DB Flat Bench',                  type: 'straight', sets: 3, min: 10, max: 12, w: 65 },
-    { id: 'pb_ohp',      name: 'Standing Barbell OHP',           type: 'straight', sets: 3, min: 8,  max: 10, w: 25 },
-    { id: 'pb_fly',      name: 'Arsenal Fly Machine',            type: 'myo',      w: 30 },
-    { id: 'pb_lat_r',    name: 'Arsenal Lateral Raises',         type: 'myo',      w: 30 },
-    { id: 'pb_rope_oh',  name: 'Cable Rope Overhead Extension',  type: 'myo',      w: 45 },
-    { id: 'pb_squat',    name: 'Bodybuilder Squat Machine',      type: 'straight', sets: 3, min: 8,  max: 10, w: 90,   note: '/side' },
-    { id: 'pb_leg_ext',  name: 'Nautilus Leg Extensions',        type: 'myo',      w: 120 },
-    { id: 'pb_woodchop', name: 'Cable Woodchop',                 type: 'straight', sets: 2, min: 12, max: 12, w: null, note: '/side' },
-  ]},
-  pull_a: { key: 'pull_a', label: 'Pull A', sub: 'Back Width · Biceps · Hamstrings', exercises: [
-    { id: 'pla_pd_over', name: 'Nautilus Lat Pulldown overhand',    type: 'straight', sets: 4, min: 8,  max: 10, w: 121 },
-    { id: 'pla_row_mid', name: 'Nautilus Chest Supported Row Mid',  type: 'straight', sets: 3, min: 10, max: 12, w: 140 },
-    { id: 'pla_fp',      name: 'Cable Face Pulls',                  type: 'myo',      w: 43 },
-    { id: 'pla_lat_pr',  name: 'Cable Lat Prayers',                 type: 'myo',      w: 58.5 },
-    { id: 'pla_cc',      name: 'Cable Curls',                       type: 'myo',      w: 43 },
-    { id: 'pla_hammer',  name: 'Hammer Curls',                      type: 'straight', sets: 3, min: 12, max: 12, w: 35 },
-    { id: 'pla_rdl',     name: 'Romanian Deadlift',                 type: 'straight', sets: 3, min: 8,  max: 8,  w: 135 },
-    { id: 'pla_ham',     name: 'Nautilus Hamstring Curls',          type: 'myo',      w: 80 },
-    { id: 'pla_pallof',  name: 'Pallof Press',                      type: 'straight', sets: 2, min: 12, max: 12, w: null, note: '/side' },
-  ]},
-  pull_b: { key: 'pull_b', label: 'Pull B', sub: 'Upper Back · Biceps · Hamstrings', exercises: [
-    { id: 'plb_pd_under', name: 'Nautilus Lat Pulldown underhand',    type: 'straight', sets: 4, min: 8,  max: 12, w: 121 },
-    { id: 'plb_row_high', name: 'Nautilus Chest Supported Row High',  type: 'straight', sets: 3, min: 10, max: 15, w: 50 },
-    { id: 'plb_fp',       name: 'Cable Face Pulls',                   type: 'myo',      w: 58.5 },
-    { id: 'plb_cs_rd',    name: 'Chest Supported Rear Delt Raises',   type: 'myo',      w: null },
-    { id: 'plb_inc_curl', name: 'Incline DB Curls',                   type: 'myo',      w: 20 },
-    { id: 'plb_cc',       name: 'Cable Curls',                        type: 'straight', sets: 3, min: 12, max: 12, w: 38.5 },
-    { id: 'plb_ham',      name: 'Nautilus Hamstring Curls',           type: 'myo',      w: 80 },
-    { id: 'plb_hip_ab',   name: 'Hip Abductor Machine',               type: 'straight', sets: 3, min: 15, max: 15, w: null },
-    { id: 'plb_pallof',   name: 'Pallof Press',                       type: 'straight', sets: 2, min: 12, max: 12, w: null, note: '/side' },
-  ]},
-  day_5: { key: 'day_5', label: 'Day 5', sub: 'Arms · Core (Optional)', exercises: [
-    { id: 'd5_ez',        name: 'EZ Bar Curls',                   type: 'straight', sets: 4, min: 10, max: 10, w: null },
-    { id: 'd5_inc_curl',  name: 'Incline DB Curls',               type: 'myo',      w: null },
-    { id: 'd5_pushdn',    name: 'Tricep Pushdowns',               type: 'myo',      w: null },
-    { id: 'd5_rope_oh',   name: 'Cable Rope Overhead Extension',  type: 'straight', sets: 3, min: 12, max: 12, w: null },
-    { id: 'd5_lat_r',     name: 'Arsenal Lateral Raises',         type: 'myo',      w: null },
-    { id: 'd5_ab_wheel',  name: 'Ab Wheel Rollout',               type: 'straight', sets: 3, min: 10, max: 10, w: null },
-    { id: 'd5_leg_raise', name: 'Hanging Leg Raise',              type: 'straight', sets: 3, min: 12, max: 12, w: null },
-  ]},
 }
 
 // ─── Mobility routine (15-min pre-bed wind-down) ────────────────────────────
@@ -858,7 +778,7 @@ function EditScreen({ split, onSave, onBack }) {
         ))}
       </div>
       <div style={{ position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 480, padding: '16px 18px', background: C.surface, borderTop: `0.5px solid ${C.border}`, boxSizing: 'border-box' }}>
-        <button onClick={() => { saveProgram(draft); onSave(draft) }}
+        <button onClick={() => onSave(draft)}
           style={{ width: '100%', padding: '14px 0', background: C.acc, border: 'none', borderRadius: 12, color: '#fff', fontSize: 16, fontWeight: 700, letterSpacing: 1, cursor: 'pointer', fontFamily: 'inherit' }}>SAVE CHANGES</button>
       </div>
     </div>
@@ -873,7 +793,8 @@ function MobilityScreen({ onBack }) {
 
   // Auto-reset completion if the stored entries are from a previous day
   const [completed, setCompletedRaw] = useState(() => {
-    const stored = safeParse(localStorage.getItem(MOBILITY_DONE_KEY), {})
+    let stored = {}
+    try { stored = JSON.parse(localStorage.getItem(MOBILITY_DONE_KEY) || '{}') } catch {}
     const today = new Date().toDateString()
     const isStale = Object.values(stored).some(ts => new Date(ts).toDateString() !== today)
     if (isStale) {
@@ -1039,13 +960,12 @@ function MobilityScreen({ onBack }) {
 // ═══════════════════════════════════════════════════════════════════════════
 export default function App() {
   const [screen, setScreen] = useState('home')
-  const [split, setSplit] = useState(loadProgram)
-  const [progress, setProgressRaw] = useState(loadProgress)
-  const [history, setHistoryRaw] = useState(loadHistory)
-  function setProgress(p) { setProgressRaw(p); saveProgress(p) }
+  const [split, setSplit] = useState(null)
+  const [progress, setProgress] = useState(null)
+  const [history, setHistory] = useState([])
+  const [dataReady, setDataReady] = useState(false)
 
   const wakeLockRef = useRef(null)
-  const syncTimerRef = useRef(null)
   const supabaseUserRef = useRef(null)
 
   // Real auth state (Stage 2). Replaces the prior anonymous-auth path.
@@ -1089,85 +1009,69 @@ export default function App() {
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [screen])
 
-  async function getSupabaseUser() {
-    return supabaseUserRef.current
-  }
-
-  function scheduleSync(hist) {
-    if (!supabase) return
-    clearTimeout(syncTimerRef.current)
-    syncTimerRef.current = setTimeout(async () => {
-      const user = await getSupabaseUser()
-      if (!user) return
-      try {
-        await supabase.from('swolebro_sync').upsert({ user_id: user.id, history: hist, updated_at: new Date().toISOString() })
-      } catch {}
-    }, 1000)
-  }
-
   useEffect(() => {
-    if (!user) return
+    if (!user) {
+      setSplit(null); setProgress(null); setHistory([]); setDataReady(false)
+      return
+    }
+    let cancelled = false
     async function initSupabase() {
       try {
         let result = await loadProgramFromSupabase(user.id)
         if (!result?.program) {
-          const hasLocalData = localStorage.getItem(PROGRAM_KEY)
-          if (hasLocalData && !localStorage.getItem('supabase_migrated')) {
-            await migrateToSupabase(user.id, split, progress)
-            localStorage.setItem('supabase_migrated', 'true')
-            result = await loadProgramFromSupabase(user.id)
-          }
-        }
-        if (!result?.program) {
           await seedUserData(user.id)
           result = await loadProgramFromSupabase(user.id)
         }
+        const hist = await loadHistoryFromSupabase(user.id)
+        if (cancelled) return
         if (result?.program) {
           setSplit(result.program)
-          setProgressRaw(result.progress)
-          saveProgress(result.progress)
+          setProgress(result.progress)
         }
-      } catch (e) { console.error('[supabase init]', e) }
+        setHistory(hist)
+        setDataReady(true)
+      } catch (e) {
+        console.error('[supabase init]', e)
+        if (!cancelled) setDataReady(true)  // surface the empty state instead of an infinite spinner
+      }
     }
     initSupabase()
+    return () => { cancelled = true }
   }, [user?.id])
 
-  // Session state (persisted)
-  const savedSession = loadSessionState()
-  const [dayKey, setDayKey]                   = useState(savedSession?.dayKey ?? null)
-  const [sessionLogs, setSessionLogsRaw]       = useState(savedSession?.logs ?? {})
-  const [sessionExercises, setSessionExercisesRaw] = useState(savedSession?.exercises ?? [])
-  const [sessionScreen, setSessionScreenRaw]   = useState(savedSession?.sessionScreen ?? 'session')
-  const [sessionResult, setSessionResultRaw]   = useState(savedSession?.result ?? null)
-  const [supabaseSessionId, setSupabaseSessionIdRaw] = useState(savedSession?.supabaseSessionId ?? null)
-
-  function persist(patch) {
-    saveSessionState({ dayKey, logs: sessionLogs, exercises: sessionExercises, sessionScreen, result: sessionResult, supabaseSessionId, ...patch })
+  async function reloadHistory() {
+    if (!user) return
+    const hist = await loadHistoryFromSupabase(user.id)
+    setHistory(hist)
   }
-  function setSessionLogs(v)       { setSessionLogsRaw(v);       persist({ logs: v }) }
-  function setSessionExercises(v)  { setSessionExercisesRaw(v);  persist({ exercises: v }) }
-  function setSessionScreen(v)     { setSessionScreenRaw(v);     persist({ sessionScreen: v }) }
-  function setSessionResult(v)     { setSessionResultRaw(v);     persist({ result: v }) }
-  function setSupabaseSessionId(v) { setSupabaseSessionIdRaw(v); persist({ supabaseSessionId: v }) }
+
+  // Session state (persisted)
+  // Session state lives in React only — refreshing the tab clears it.
+  // The "Recover last cloud session" button on Home re-hydrates from Supabase.
+  const [dayKey, setDayKey]                   = useState(null)
+  const [sessionLogs, setSessionLogs]         = useState({})
+  const [sessionExercises, setSessionExercises] = useState([])
+  const [sessionScreen, setSessionScreen]     = useState('session')
+  const [sessionResult, setSessionResult]     = useState(null)
+  const [supabaseSessionId, setSupabaseSessionId] = useState(null)
 
   const hasActiveSession = !!dayKey && sessionExercises.length > 0
-  const currentCycle = dayKey ? (progress[dayKey]?.week ?? (dayKey === 'day_5' ? 1 : 3)) : 3
+  const currentCycle = dayKey ? (progress?.[dayKey]?.week ?? (dayKey === 'day_5' ? 1 : 3)) : 3
 
   async function startSession(key) {
     const day = split[key]
     const cycle = progress[key]?.week ?? (key === 'day_5' ? 1 : 3)
     const freshExercises = JSON.parse(JSON.stringify(day.exercises))
     setDayKey(key)
-    setSessionLogsRaw({})
-    setSessionExercisesRaw(freshExercises)
-    setSessionScreenRaw('session')
-    setSessionResultRaw(null)
-    setSupabaseSessionIdRaw(null)
-    saveSessionState({ dayKey: key, logs: {}, exercises: freshExercises, sessionScreen: 'session', result: null, supabaseSessionId: null })
+    setSessionLogs({})
+    setSessionExercises(freshExercises)
+    setSessionScreen('session')
+    setSessionResult(null)
+    setSupabaseSessionId(null)
     setScreen('session')
     acquireWakeLock()
 
-    const user = supabaseUserRef.current ?? await getSupabaseUser()
+    const user = supabaseUserRef.current
     if (user) {
       const newId = await createSessionRow({
         userId: user.id,
@@ -1199,11 +1103,9 @@ export default function App() {
       }
       setSplit(updatedSplit)
       const updatedProgress = { ...progress, [dayKey]: { week: nextCycle } }
-      saveProgress(updatedProgress)
-      setProgressRaw(updatedProgress)
+      setProgress(updatedProgress)
       finalProgress = updatedProgress
 
-      const user = supabaseUserRef.current
       if (user) {
         try {
           await saveSessionTargets(user.id, dayKey, split[dayKey]?._split_day_id, sessionResult.targets, dayExercises, nextCycle)
@@ -1215,32 +1117,23 @@ export default function App() {
       }
     }
 
-    if (supabaseSessionId) markSessionComplete(supabaseSessionId)
-
-    const newEntry = {
-      date: new Date().toISOString(),
-      dayKey,
-      label: split[dayKey]?.label ?? dayKey,
-      week: currentCycle,
-      summary: sessionResult?.session_summary ?? null,
+    if (supabaseSessionId) {
+      await markSessionComplete(supabaseSessionId, sessionResult?.session_summary ?? null)
     }
-    const updatedHistory = [newEntry, ...history].slice(0, 20)
-    saveHistory(updatedHistory)
-    setHistoryRaw(updatedHistory)
-    scheduleSync(updatedHistory)
+
+    await reloadHistory()
     releaseWakeLock()
-    clearSessionState()
     setDayKey(null)
-    setSessionLogsRaw({})
-    setSessionExercisesRaw([])
-    setSessionScreenRaw('session')
-    setSessionResultRaw(null)
-    setSupabaseSessionIdRaw(null)
+    setSessionLogs({})
+    setSessionExercises([])
+    setSessionScreen('session')
+    setSessionResult(null)
+    setSupabaseSessionId(null)
     setScreen('home')
   }
 
   async function recoverLatest() {
-    const user = supabaseUserRef.current ?? await getSupabaseUser()
+    const user = supabaseUserRef.current
     if (!user) { alert('Not connected to cloud.'); return }
     const latest = await fetchMostRecentSessionAny(user.id)
     if (!latest) { alert('No cloud sessions found.'); return }
@@ -1260,13 +1153,12 @@ export default function App() {
       else logsByShortId[ex.id].push({ num: log.set_number, w, reps: log.reps, rir: log.rir })
     }
 
-    const cycle = progress[key]?.week ?? 3
     setDayKey(key)
-    setSessionLogsRaw(logsByShortId)
-    setSessionExercisesRaw(day.exercises)
-    setSessionResultRaw(null)
-    setSupabaseSessionIdRaw(latest.sessionId)
-    saveSessionState({ dayKey: key, logs: logsByShortId, exercises: day.exercises, sessionScreen: 'session', result: null, supabaseSessionId: latest.sessionId })
+    setSessionLogs(logsByShortId)
+    setSessionExercises(day.exercises)
+    setSessionScreen('session')
+    setSessionResult(null)
+    setSupabaseSessionId(latest.sessionId)
     setScreen('session')
   }
 
@@ -1285,6 +1177,13 @@ export default function App() {
     )
   }
   if (!user) return <SignIn />
+  if (!dataReady || !split || !progress) {
+    return (
+      <div style={{ maxWidth: 480, margin: '0 auto', height: '100dvh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.muted, fontFamily: '-apple-system, Arial, sans-serif' }}>
+        Loading your program…
+      </div>
+    )
+  }
 
   return (
     <div style={{ maxWidth: 480, margin: '0 auto', height: '100dvh', background: C.bg, display: 'flex', flexDirection: 'column', color: C.text, fontFamily: '-apple-system, Arial, sans-serif' }}>
@@ -1301,9 +1200,17 @@ export default function App() {
       )}
       {screen === 'edit' && (
         <EditScreen split={split} onSave={async s => {
-          setSplit(s); setScreen('home')
-          const user = supabaseUserRef.current
-          if (user) migrateToSupabase(user.id, s, progress).catch(e => console.error('[edit sync]', e))
+          if (user) {
+            try {
+              await saveProgramToSupabase(user.id, s, progress)
+            } catch (e) {
+              console.error('[edit save]', e)
+              alert(`Couldn't save your edits to the cloud: ${e.message}`)
+              return
+            }
+          }
+          setSplit(s)
+          setScreen('home')
         }} onBack={() => setScreen('home')} />
       )}
       {screen === 'session' && dayKey && (

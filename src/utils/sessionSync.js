@@ -171,14 +171,14 @@ export async function fetchLatestSessionData(userId, splitDayId) {
 }
 
 /**
- * Marks a session as complete. Non-blocking — errors are logged, not thrown.
+ * Marks a session as complete. Optionally stores a session summary in `notes`.
  */
-export async function markSessionComplete(sessionId) {
+export async function markSessionComplete(sessionId, notes = null) {
   if (!supabase || !sessionId) return
   try {
     await supabase
       .from('sessions')
-      .update({ completed_at: new Date().toISOString() })
+      .update({ completed_at: new Date().toISOString(), notes })
       .eq('id', sessionId)
   } catch (e) {
     console.error('[markSessionComplete] failed', e)
