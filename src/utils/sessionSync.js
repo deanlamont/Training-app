@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient.js'
+import { enqueueWrite } from './writeQueue.js'
 
 /**
  * Creates a Supabase `sessions` row at the start of a workout.
@@ -27,40 +28,39 @@ export async function createSessionRow({ userId, splitDayId, weekNumber, mesocyc
 }
 
 /**
- * Writes (or rewrites) the logged sets for a single exercise within a session.
- * Deletes any prior set_logs for that (session, exercise) pair, then inserts fresh rows.
- * Silently skips if we don't have the exercise UUID (e.g. after a swap to unknown exercise).
+ * Queues a (re)write of logged sets for one exercise within a session.
+ * Returns immediately. The actual delete + insert flushes from the write
+ * queue with retry/backoff so a flaky basement signal doesn't drop sets.
  */
-export async function writeExerciseSets({ sessionId, exerciseUuid, sets }) {
+export function writeExerciseSets({ sessionId, exerciseUuid, sets }) {
   if (!supabase || !sessionId || !exerciseUuid || !Array.isArray(sets)) return
-  try {
-    await supabase
+
+  const rows = sets
+    .filter(s => s && s.type !== 'swap' && s.w != null && s.reps != null)
+    .map((s, i) => ({
+      session_id: sessionId,
+      exercise_id: exerciseUuid,
+      set_number: s.type === 'act' ? 0 : (s.num ?? i + 1),
+      set_type: s.type === 'act' ? 'myo_activation'
+              : s.type === 'mini' ? 'myo_mini'
+              : 'straight',
+      weight: s.w,
+      reps: s.reps,
+      rir: s.rir ?? null,
+    }))
+
+  enqueueWrite(`sets:${exerciseUuid.slice(0, 8)}`, async () => {
+    const { error: delErr } = await supabase
       .from('set_logs')
       .delete()
       .eq('session_id', sessionId)
       .eq('exercise_id', exerciseUuid)
-
-    const rows = sets
-      .filter(s => s && s.type !== 'swap' && s.w != null && s.reps != null)
-      .map((s, i) => ({
-        session_id: sessionId,
-        exercise_id: exerciseUuid,
-        set_number: s.type === 'act' ? 0 : (s.num ?? i + 1),
-        set_type: s.type === 'act' ? 'myo_activation'
-                : s.type === 'mini' ? 'myo_mini'
-                : 'straight',
-        weight: s.w,
-        reps: s.reps,
-        rir: s.rir ?? null,
-      }))
-
+    if (delErr) throw delErr
     if (rows.length) {
       const { error } = await supabase.from('set_logs').insert(rows)
       if (error) throw error
     }
-  } catch (e) {
-    console.error('[writeExerciseSets] failed', e)
-  }
+  }).catch(() => { /* failure already counted in writeQueue.failed */ })
 }
 
 /**
@@ -171,16 +171,17 @@ export async function fetchLatestSessionData(userId, splitDayId) {
 }
 
 /**
- * Marks a session as complete. Optionally stores a session summary in `notes`.
+ * Queues a session-complete marker (with optional summary stored in notes).
+ * Routes through the write queue so a dropped connection at the end of a
+ * workout doesn't lose the completion state.
  */
-export async function markSessionComplete(sessionId, notes = null) {
+export function markSessionComplete(sessionId, notes = null) {
   if (!supabase || !sessionId) return
-  try {
-    await supabase
+  enqueueWrite(`complete:${sessionId.slice(0, 8)}`, async () => {
+    const { error } = await supabase
       .from('sessions')
       .update({ completed_at: new Date().toISOString(), notes })
       .eq('id', sessionId)
-  } catch (e) {
-    console.error('[markSessionComplete] failed', e)
-  }
+    if (error) throw error
+  }).catch(() => { /* failure already counted in writeQueue.failed */ })
 }

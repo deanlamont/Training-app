@@ -15,6 +15,7 @@ import {
   fetchMostRecentSessionAny,
 } from './utils/sessionSync'
 import { computeNextTargets } from './utils/progression'
+import { subscribe as subscribeQueue, getStatus as getQueueStatus, clearFailed } from './utils/writeQueue'
 
 const APP_VERSION = 'v2026-04-24-rebuild'
 const MESO = 1
@@ -46,6 +47,41 @@ const MOBILITY_ROUTINE = [
   { id: 'm_child',   name: "Child's Pose",             duration: 60,  description: 'Knees wide, big toes touching, hips back to heels, arms long. Slow 4-count in, 6-count out. Decompress and wind down.' },
 ]
 const MOBILITY_DONE_KEY = 'swolebro_mobility_done'
+
+function SyncPill() {
+  const [s, setS] = useState(getQueueStatus())
+  useEffect(() => subscribeQueue(setS), [])
+
+  let bg, fg, text
+  if (s.failed > 0) {
+    bg = '#FBE9E7'; fg = C.red
+    text = `${s.failed} failed — tap to dismiss`
+  } else if (!s.online) {
+    bg = '#FFF3E0'; fg = C.orange
+    text = s.queued > 0 ? `Offline · ${s.queued} pending` : 'Offline'
+  } else if (s.queued > 0 || s.inFlight > 0) {
+    bg = '#FFF8E1'; fg = C.orange
+    text = `Syncing ${s.queued + s.inFlight}…`
+  } else {
+    bg = '#EAF3DE'; fg = C.acc
+    text = 'Synced'
+  }
+
+  return (
+    <button
+      onClick={() => { if (s.failed > 0) clearFailed() }}
+      style={{
+        position: 'absolute', top: 8, right: 8, zIndex: 10,
+        padding: '4px 10px', fontSize: 11, fontWeight: 600,
+        background: bg, color: fg, border: 'none', borderRadius: 999,
+        cursor: s.failed > 0 ? 'pointer' : 'default',
+        fontFamily: 'inherit', letterSpacing: 0.5,
+      }}
+    >
+      {text}
+    </button>
+  )
+}
 
 function fmtClock(s) {
   const m = Math.floor(s / 60)
@@ -1118,10 +1154,21 @@ export default function App() {
     }
 
     if (supabaseSessionId) {
-      await markSessionComplete(supabaseSessionId, sessionResult?.session_summary ?? null)
+      markSessionComplete(supabaseSessionId, sessionResult?.session_summary ?? null)
     }
 
-    await reloadHistory()
+    // Optimistic prepend so the just-finished session is immediately visible
+    // in RECENT. The fire-and-forget reload below reconciles once the queue
+    // flushes the completed_at write.
+    const optimisticEntry = {
+      date: new Date().toISOString(),
+      dayKey,
+      label: split[dayKey]?.label ?? dayKey,
+      week: currentCycle,
+      summary: sessionResult?.session_summary ?? null,
+    }
+    setHistory([optimisticEntry, ...history].slice(0, 20))
+
     releaseWakeLock()
     setDayKey(null)
     setSessionLogs({})
@@ -1130,6 +1177,8 @@ export default function App() {
     setSessionResult(null)
     setSupabaseSessionId(null)
     setScreen('home')
+
+    void reloadHistory()
   }
 
   async function recoverLatest() {
@@ -1186,7 +1235,8 @@ export default function App() {
   }
 
   return (
-    <div style={{ maxWidth: 480, margin: '0 auto', height: '100dvh', background: C.bg, display: 'flex', flexDirection: 'column', color: C.text, fontFamily: '-apple-system, Arial, sans-serif' }}>
+    <div style={{ position: 'relative', maxWidth: 480, margin: '0 auto', height: '100dvh', background: C.bg, display: 'flex', flexDirection: 'column', color: C.text, fontFamily: '-apple-system, Arial, sans-serif' }}>
+      <SyncPill />
       {screen === 'home' && (
         <HomeScreen split={split} progress={progress} history={history}
           onStart={startSession} onEdit={() => setScreen('edit')}
