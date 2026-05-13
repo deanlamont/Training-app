@@ -363,7 +363,7 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
     }
   }, [expanded, ex.id])
 
-  const step = ex.type === 'straight' && ex.name.toLowerCase().includes('cable') ? 2.5 : 5
+  const step = 5
 
   function doLogSet() {
     if (weight == null || reps == null || reps <= 0) return
