@@ -13,6 +13,7 @@ import {
   writeExerciseSets,
   markSessionComplete,
   fetchMostRecentSessionAny,
+  fetchPreviousSessionForDay,
 } from './utils/sessionSync'
 import { computeNextTargets } from './utils/progression'
 import { subscribe as subscribeQueue, getStatus as getQueueStatus, clearFailed } from './utils/writeQueue'
@@ -100,6 +101,42 @@ function targetStr(ex) {
     return `${ex.sets}×${reps} @ ${fmt(ex.w)}lb${ex.note ?? ''}`
   }
   return `Myo @ ${fmt(ex.w)}lb`
+}
+
+// Map raw set_logs rows for a previous session to `{ [shortExId]: [{type,w,reps}] }`.
+// `type` is normalized to 'act' | 'mini' | 'straight'.
+function mapPreviousSetLogs(setLogs, day) {
+  const byShortId = {}
+  for (const log of setLogs ?? []) {
+    const ex = day?.exercises?.find(e => e._exercise_id === log.exercise_id)
+    if (!ex) continue
+    if (!byShortId[ex.id]) byShortId[ex.id] = []
+    byShortId[ex.id].push({
+      type: log.set_type === 'myo_activation' ? 'act'
+          : log.set_type === 'myo_mini' ? 'mini'
+          : 'straight',
+      w: Number(log.weight),
+      reps: log.reps,
+    })
+  }
+  return byShortId
+}
+
+function formatLastSets(lastSets) {
+  if (!lastSets || lastSets.length === 0) return null
+  const act = lastSets.find(s => s.type === 'act')
+  const minis = lastSets.filter(s => s.type === 'mini')
+  const straight = lastSets.filter(s => s.type !== 'act' && s.type !== 'mini')
+  if (act) {
+    const minisStr = minis.length ? ` + ${minis.length} mini (${minis.map(m => m.reps).join(',')})` : ''
+    return `${fmt(act.w)}lb × ${act.reps} act${minisStr}`
+  }
+  if (straight.length === 0) return null
+  const allSameW = straight.every(s => s.w === straight[0].w)
+  if (allSameW) {
+    return `${fmt(straight[0].w)}lb × ${straight.map(s => s.reps).join(', ')}`
+  }
+  return straight.map(s => `${fmt(s.w)}×${s.reps}`).join(', ')
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -293,34 +330,13 @@ function Stepper({ value, onChange, step = 1, min = 0, max = 9999, label }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// RIR picker (0 / 1 / 2 / 3 / 4+)
-// ═══════════════════════════════════════════════════════════════════════════
-function RirPicker({ value, onChange }) {
-  return (
-    <div>
-      <div style={{ fontSize: 12, color: C.muted, letterSpacing: 1, marginBottom: 4, fontWeight: 'bold' }}>RIR (optional)</div>
-      <div style={{ display: 'flex', gap: 6 }}>
-        {[0, 1, 2, 3, 4].map(r => {
-          const active = value === r
-          return (
-            <button key={r} onClick={() => onChange(active ? null : r)}
-              style={{ flex: 1, padding: '10px 0', background: active ? C.acc : C.innerBg, border: `0.5px solid ${active ? C.acc : C.border}`, borderRadius: 10, color: active ? '#fff' : C.sub, fontSize: 16, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-              {r === 4 ? '4+' : r}
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
 // Exercise Card (collapsed / expanded with set entry)
 // ═══════════════════════════════════════════════════════════════════════════
-function ExerciseCard({ ex, sets, expanded, onExpand, onLogSet, onDeleteSet, onSkip, supabaseSessionId }) {
+function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDeleteSet, onSkip, supabaseSessionId }) {
   const workSets = sets.filter(s => s.type !== 'swap')
   const hasAnyLogs = workSets.length > 0
   const skipped = sets.some(s => s.type === 'swap')
+  const lastSummary = formatLastSets(lastSets)
 
   // Determine default weight/reps for next set
   const lastSet = [...workSets].reverse().find(s => s.type !== 'mini')
@@ -330,7 +346,6 @@ function ExerciseCard({ ex, sets, expanded, onExpand, onLogSet, onDeleteSet, onS
   // Local form state (only when expanded)
   const [weight, setWeight] = useState(defaultWeight)
   const [reps, setReps] = useState(defaultReps)
-  const [rir, setRir] = useState(null)
   const [mode, setMode] = useState('straight') // 'straight' | 'activation' | 'mini'
 
   // When entering expanded mode, reset to defaults
@@ -339,7 +354,6 @@ function ExerciseCard({ ex, sets, expanded, onExpand, onLogSet, onDeleteSet, onS
       const last = [...workSets].reverse().find(s => s.type !== 'mini')
       setWeight(last?.w ?? ex.w ?? 0)
       setReps(last?.reps ?? Math.round(((ex.min ?? 8) + (ex.max ?? ex.min ?? 8)) / 2))
-      setRir(null)
       if (ex.type === 'myo') {
         const hasActivation = workSets.some(s => s.type === 'act')
         setMode(hasActivation ? 'mini' : 'activation')
@@ -355,7 +369,7 @@ function ExerciseCard({ ex, sets, expanded, onExpand, onLogSet, onDeleteSet, onS
     if (weight == null || reps == null || reps <= 0) return
     let newSet
     if (mode === 'activation') {
-      newSet = { type: 'act', w: weight, reps, rir }
+      newSet = { type: 'act', w: weight, reps }
     } else if (mode === 'mini') {
       const miniCount = workSets.filter(s => s.type === 'mini').length
       newSet = { type: 'mini', num: miniCount + 1, w: weight, reps }
@@ -379,6 +393,11 @@ function ExerciseCard({ ex, sets, expanded, onExpand, onLogSet, onDeleteSet, onS
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 16, fontWeight: 600, color: C.text }}>{ex.name}</div>
             <div style={{ fontSize: 14, color: C.sub, marginTop: 2 }}>{targetStr(ex)}</div>
+            {lastSummary && (
+              <div style={{ fontSize: 13, color: C.muted, marginTop: 3, fontFamily: 'monospace' }}>
+                Last: {lastSummary}
+              </div>
+            )}
           </div>
           <div style={{ textAlign: 'right', flexShrink: 0 }}>
             {hasAnyLogs ? (
@@ -403,6 +422,11 @@ function ExerciseCard({ ex, sets, expanded, onExpand, onLogSet, onDeleteSet, onS
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 18, fontWeight: 700, color: C.text }}>{ex.name}</div>
           <div style={{ fontSize: 14, color: C.sub, marginTop: 2 }}>Target: {targetStr(ex)}</div>
+          {lastSummary && (
+            <div style={{ fontSize: 13, color: C.muted, marginTop: 3, fontFamily: 'monospace' }}>
+              Last: {lastSummary}
+            </div>
+          )}
         </div>
         <button onClick={onExpand} aria-label="collapse"
           style={{ background: 'none', border: 'none', color: C.muted, fontSize: 22, cursor: 'pointer', padding: '0 4px' }}>×</button>
@@ -419,7 +443,7 @@ function ExerciseCard({ ex, sets, expanded, onExpand, onLogSet, onDeleteSet, onS
               <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '10px 12px', background: C.innerBg, borderRadius: 8, marginBottom: 4 }}>
                 <div style={{ flex: 1, fontSize: 14, color: C.sub, fontWeight: 600 }}>{label}</div>
                 <div style={{ fontSize: 15, color: C.text, fontWeight: 700, fontFamily: 'monospace', marginRight: 10 }}>
-                  {fmt(s.w)}lb × {s.reps}{s.rir != null ? ` · ${s.rir} RIR` : ''}
+                  {fmt(s.w)}lb × {s.reps}
                 </div>
                 <button onClick={() => onDeleteSet(i)} aria-label="delete set"
                   style={{ background: 'none', border: 'none', color: C.red, fontSize: 14, fontWeight: 700, cursor: 'pointer', padding: '4px 8px', fontFamily: 'inherit' }}>
@@ -439,15 +463,10 @@ function ExerciseCard({ ex, sets, expanded, onExpand, onLogSet, onDeleteSet, onS
       )}
 
       {/* Entry form */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
         <Stepper value={weight} onChange={setWeight} step={step} label="WEIGHT (lb)" />
         <Stepper value={reps} onChange={setReps} step={1} min={0} max={50} label="REPS" />
       </div>
-      {mode !== 'mini' && (
-        <div style={{ marginBottom: 14 }}>
-          <RirPicker value={rir} onChange={setRir} />
-        </div>
-      )}
 
       <button onClick={doLogSet}
         style={{ width: '100%', padding: 16, background: C.acc, border: 'none', borderRadius: 12, color: '#fff', fontSize: 17, fontWeight: 800, letterSpacing: 1, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 10 }}>
@@ -472,6 +491,7 @@ function SessionScreen({
   sessionLogs, setSessionLogs,
   sessionExercises,
   supabaseSessionId,
+  lastSessionLogs,
 }) {
   const day = split[dayKey]
   const [expandedId, setExpandedId] = useState(null)
@@ -574,6 +594,7 @@ function SessionScreen({
           <ExerciseCard key={ex.id}
             ex={ex}
             sets={sessionLogs[ex.id] || []}
+            lastSets={lastSessionLogs?.[ex.id]}
             expanded={expandedId === ex.id}
             onExpand={() => setExpandedId(expandedId === ex.id ? null : ex.id)}
             onLogSet={s => logSet(ex.id, s)}
@@ -1090,6 +1111,7 @@ export default function App() {
   const [sessionScreen, setSessionScreen]     = useState('session')
   const [sessionResult, setSessionResult]     = useState(null)
   const [supabaseSessionId, setSupabaseSessionId] = useState(null)
+  const [lastSessionLogs, setLastSessionLogs] = useState({})
 
   const hasActiveSession = !!dayKey && sessionExercises.length > 0
   const currentCycle = dayKey ? (progress?.[dayKey]?.week ?? (dayKey === 'day_5' ? 1 : 3)) : 3
@@ -1104,6 +1126,7 @@ export default function App() {
     setSessionScreen('session')
     setSessionResult(null)
     setSupabaseSessionId(null)
+    setLastSessionLogs({})
     setScreen('session')
     acquireWakeLock()
 
@@ -1116,6 +1139,9 @@ export default function App() {
         mesocycle: MESO,
       })
       if (newId) setSupabaseSessionId(newId)
+
+      const prev = await fetchPreviousSessionForDay(user.id, day._split_day_id, newId)
+      if (prev) setLastSessionLogs(mapPreviousSetLogs(prev.setLogs, day))
     }
   }
 
@@ -1176,6 +1202,7 @@ export default function App() {
     setSessionScreen('session')
     setSessionResult(null)
     setSupabaseSessionId(null)
+    setLastSessionLogs({})
     setScreen('home')
 
     void reloadHistory()
@@ -1209,6 +1236,9 @@ export default function App() {
     setSessionResult(null)
     setSupabaseSessionId(latest.sessionId)
     setScreen('session')
+
+    const prev = await fetchPreviousSessionForDay(user.id, latest.splitDayId, latest.sessionId)
+    setLastSessionLogs(prev ? mapPreviousSetLogs(prev.setLogs, day) : {})
   }
 
   if (!supabase) {
@@ -1281,6 +1311,7 @@ export default function App() {
             sessionLogs={sessionLogs} setSessionLogs={setSessionLogs}
             sessionExercises={sessionExercises}
             supabaseSessionId={supabaseSessionId}
+            lastSessionLogs={lastSessionLogs}
           />
         )
       )}

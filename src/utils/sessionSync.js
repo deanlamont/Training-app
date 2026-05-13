@@ -171,6 +171,42 @@ export async function fetchLatestSessionData(userId, splitDayId) {
 }
 
 /**
+ * Fetches the most recent *completed* session for a given day, optionally excluding
+ * a session id (e.g. the one the user is about to log into). Used to show the user
+ * what they did last time on each exercise.
+ * Returns { sessionId, setLogs } or null if no prior completed session exists.
+ */
+export async function fetchPreviousSessionForDay(userId, splitDayId, excludeSessionId = null) {
+  if (!supabase || !userId || !splitDayId) return null
+  try {
+    let q = supabase
+      .from('sessions')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('split_day_id', splitDayId)
+      .not('completed_at', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+    if (excludeSessionId) q = q.neq('id', excludeSessionId)
+    const { data: rows, error } = await q
+    if (error) throw error
+    const prev = rows?.[0]
+    if (!prev) return null
+
+    const { data: logs } = await supabase
+      .from('set_logs')
+      .select('*')
+      .eq('session_id', prev.id)
+      .order('set_number', { ascending: true })
+
+    return { sessionId: prev.id, setLogs: logs ?? [] }
+  } catch (e) {
+    console.error('[fetchPreviousSessionForDay] failed', e)
+    return null
+  }
+}
+
+/**
  * Queues a session-complete marker (with optional summary stored in notes).
  * Routes through the write queue so a dropped connection at the end of a
  * workout doesn't lose the completion state.

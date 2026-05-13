@@ -1,66 +1,38 @@
-// Deterministic RP-method progression. No LLM, no JSON, no network.
-// Given a completed session, returns next-cycle targets for every exercise.
+// Simple progressive overload.
+//   Straight sets: hit the top of the rep range on every working set → +5lb.
+//                  Otherwise hold the weight, push reps.
+//   Myo-reps:      activation set hits 15+ reps → +5lb. Otherwise hold.
+// No RIR, no auto-deload. To back off a stalled lift, edit the weight manually.
 
 const DEFAULT_INCREMENT = 5
 
-function avg(nums) {
-  if (!nums.length) return null
-  return nums.reduce((a, b) => a + b, 0) / nums.length
-}
-
-// Returns { nextWeight, status, note } for one exercise given its logged sets.
 function decideOne(ex, sets) {
   const work = (sets || []).filter(s =>
     s && s.type !== 'swap' && s.reps != null && s.w != null
   )
 
-  // Skipped entirely
   if (!work.length) {
     return { nextWeight: ex.w, status: 'skipped', note: 'skipped' }
   }
 
   const increment = ex.increment ?? DEFAULT_INCREMENT
-  const rirs = work.map(s => s.rir).filter(r => r != null)
-  const avgRir = avg(rirs)
 
-  // Myo-reps: the activation set drives progression
   if (ex.type === 'myo') {
     const activation = work.find(s => s.type === 'act') || work[0]
-    const reps = activation.reps
-    if (reps >= 15) {
+    if (activation.reps >= 15) {
       return {
         nextWeight: (ex.w ?? activation.w) + increment,
         status: 'up',
-        note: `+${increment}lb (activation hit ${reps})`,
-      }
-    }
-    if (activation.rir != null && activation.rir <= 0) {
-      return {
-        nextWeight: Math.max(0, (ex.w ?? activation.w) - increment),
-        status: 'deload',
-        note: 'activation grinding — back off',
+        note: `+${increment}lb (activation hit ${activation.reps})`,
       }
     }
     return { nextWeight: ex.w ?? activation.w, status: 'hold', note: 'hold, push reps' }
   }
 
-  // Straight sets
-  const minReps = ex.min ?? 0
-  const maxReps = ex.max ?? minReps
-  const missedMin = work.some(s => s.reps < minReps)
+  const maxReps = ex.max ?? ex.min ?? 0
   const hitMax = work.every(s => s.reps >= maxReps)
 
-  if (avgRir !== null && avgRir <= 0) {
-    return {
-      nextWeight: Math.max(0, (ex.w ?? 0) - increment),
-      status: 'deload',
-      note: 'grinding — back off',
-    }
-  }
-  if (missedMin) {
-    return { nextWeight: ex.w, status: 'hold', note: 'fell short — hold' }
-  }
-  if (hitMax && (avgRir === null || avgRir >= 2)) {
+  if (hitMax) {
     return {
       nextWeight: (ex.w ?? 0) + increment,
       status: 'up',
@@ -95,7 +67,6 @@ export function computeNextTargets(exercises, logs, cycle) {
       note: decision.note,
     })
     if (decision.status === 'up') movers.push(`${ex.name} ↑`)
-    else if (decision.status === 'deload') movers.push(`${ex.name} ↓`)
   }
 
   const logged = targets.filter(t => t.status !== 'skipped').length
