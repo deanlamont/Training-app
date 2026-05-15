@@ -375,7 +375,7 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
       newSet = { type: 'mini', num: miniCount + 1, w: weight, reps }
     } else {
       const strCount = workSets.filter(s => s.type !== 'act' && s.type !== 'mini').length
-      newSet = { num: strCount + 1, w: weight, reps, rir }
+      newSet = { num: strCount + 1, w: weight, reps }
     }
     onLogSet(newSet)
     // After logging: mini mode sticks at mini, straight increments set count
