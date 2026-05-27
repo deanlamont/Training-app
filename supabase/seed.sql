@@ -49,6 +49,10 @@ insert into exercises (name, equipment_category, muscle_group, movement_type, we
   ('Hip Thrust',                      'free_weight',    'glutes',     'compound',  5),
   -- Conditioning
   ('Kettlebell Swing',                'specialty',      'glutes',     'compound',  5),
+  -- Athlete prehab / accessory
+  ('Band Pull-apart',                 'specialty',      'rear_delt',  'isolation', 5),
+  ('Dead Hang',                       'specialty',      'back',       'isolation', 5),
+  ('Suitcase Carry',                  'free_weight',    'core',       'compound',  5),
   -- Triceps (additional)
   ('Cable Rope Overhead Extension',   'cable',          'triceps',    'isolation', 4.5),
   -- Shoulders (additional)
