@@ -53,7 +53,7 @@ export async function seedUserData(userId) {
 
     // PULL A
     { day: 'pull_a', ex: 'Pull-up',                           sid: 'pla_pullup',  type: 'straight', sets: 3, min: 5,  max: 10, order: 1,  note: 'bodyweight (+/- assist)' },
-    { day: 'pull_a', ex: 'Nautilus Lat Pulldown overhand',    sid: 'pla_pd_over', type: 'straight', sets: 4, min: 8,  max: 10, order: 2 },
+    { day: 'pull_a', ex: 'Nautilus Lat Pulldown overhand',    sid: 'pla_pd_over', type: 'straight', sets: 3, min: 8,  max: 10, order: 2 },
     { day: 'pull_a', ex: 'Nautilus Chest Supported Row Mid',  sid: 'pla_row_mid', type: 'straight', sets: 3, min: 10, max: 12, order: 3 },
     { day: 'pull_a', ex: 'Cable Face Pulls',                  sid: 'pla_fp',      type: 'straight', sets: 3, min: 15, max: 20, order: 4,  intensifier: '1s pause + squeeze at peak' },
     { day: 'pull_a', ex: 'Cable Curls',                       sid: 'pla_cc',      type: 'straight', sets: 3, min: 12, max: 15, order: 5,  intensifier: 'Slow 3s eccentric + peak squeeze' },
@@ -65,7 +65,7 @@ export async function seedUserData(userId) {
     { day: 'pull_a', ex: 'Dead Hang',                         sid: 'pla_hang',    type: 'straight', sets: 2, min: 30, max: 30, order: 11, note: '30s hold per set (grip + decompression)' },
 
     // PULL B
-    { day: 'pull_b', ex: 'Nautilus Lat Pulldown underhand',    sid: 'plb_pd_under', type: 'straight', sets: 4, min: 8,  max: 12, order: 1 },
+    { day: 'pull_b', ex: 'Nautilus Lat Pulldown underhand',    sid: 'plb_pd_under', type: 'straight', sets: 3, min: 8,  max: 12, order: 1 },
     { day: 'pull_b', ex: 'Nautilus Chest Supported Row High',  sid: 'plb_row_high', type: 'straight', sets: 3, min: 10, max: 15, order: 2 },
     { day: 'pull_b', ex: 'Cable Face Pulls',                   sid: 'plb_fp',       type: 'straight', sets: 3, min: 15, max: 20, order: 3,  intensifier: '1s pause + squeeze at peak' },
     { day: 'pull_b', ex: 'Chest Supported Rear Delt Raises',   sid: 'plb_cs_rd',    type: 'straight', sets: 3, min: 12, max: 15, order: 4,  intensifier: 'Slow 3s eccentric + 1s pause' },
@@ -134,7 +134,7 @@ export async function seedUserData(userId) {
 
     // PULL A
     { day: 'pull_a', ex: 'Pull-up',                           w: 0,    sets: 3, min: 5,  max: 10, rir: 2, type: 'straight' },
-    { day: 'pull_a', ex: 'Nautilus Lat Pulldown overhand',    w: 121,  sets: 4, min: 8,  max: 10, rir: 2, type: 'straight' },
+    { day: 'pull_a', ex: 'Nautilus Lat Pulldown overhand',    w: 121,  sets: 3, min: 8,  max: 10, rir: 2, type: 'straight' },
     { day: 'pull_a', ex: 'Nautilus Chest Supported Row Mid',  w: 140,  sets: 3, min: 10, max: 12, rir: 2, type: 'straight' },
     { day: 'pull_a', ex: 'Cable Face Pulls',                  w: 43,   sets: 3, min: 15, max: 20, rir: 1, type: 'straight' },
     { day: 'pull_a', ex: 'Cable Curls',                       w: 43,   sets: 3, min: 12, max: 15, rir: 1, type: 'straight' },
@@ -146,7 +146,7 @@ export async function seedUserData(userId) {
     { day: 'pull_a', ex: 'Dead Hang',                         w: 0,    sets: 2, min: 30, max: 30, rir: 2, type: 'straight' },
 
     // PULL B
-    { day: 'pull_b', ex: 'Nautilus Lat Pulldown underhand',    w: 121,  sets: 4, min: 8,  max: 12, rir: 2, type: 'straight' },
+    { day: 'pull_b', ex: 'Nautilus Lat Pulldown underhand',    w: 121,  sets: 3, min: 8,  max: 12, rir: 2, type: 'straight' },
     { day: 'pull_b', ex: 'Nautilus Chest Supported Row High',  w: 50,   sets: 3, min: 10, max: 15, rir: 2, type: 'straight' },
     { day: 'pull_b', ex: 'Cable Face Pulls',                   w: 58.5, sets: 3, min: 15, max: 20, rir: 1, type: 'straight' },
     { day: 'pull_b', ex: 'Incline DB Curls',                   w: 20,   sets: 3, min: 12, max: 15, rir: 1, type: 'straight' },
