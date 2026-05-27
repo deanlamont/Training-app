@@ -96,15 +96,14 @@ function fmt(n) {
 }
 
 function targetStr(ex) {
-  if (ex.type === 'straight') {
-    const reps = ex.max !== ex.min ? `${ex.min}-${ex.max}` : ex.min
-    return `${ex.sets}×${reps} @ ${fmt(ex.w)}lb${ex.note ?? ''}`
-  }
-  return `Myo @ ${fmt(ex.w)}lb`
+  const reps = ex.max !== ex.min ? `${ex.min}-${ex.max}` : ex.min
+  const sets = ex.sets ?? '?'
+  return `${sets}×${reps} @ ${fmt(ex.w)}lb${ex.note ?? ''}`
 }
 
-// Map raw set_logs rows for a previous session to `{ [shortExId]: [{type,w,reps}] }`.
-// `type` is normalized to 'act' | 'mini' | 'straight'.
+// Map raw set_logs rows for a previous session to `{ [shortExId]: [{w,reps}] }`.
+// Historical 'myo_activation' / 'myo_mini' rows from before the Athlean-X
+// switch are collapsed into plain work sets so display is uniform.
 function mapPreviousSetLogs(setLogs, day) {
   const byShortId = {}
   for (const log of setLogs ?? []) {
@@ -112,9 +111,6 @@ function mapPreviousSetLogs(setLogs, day) {
     if (!ex) continue
     if (!byShortId[ex.id]) byShortId[ex.id] = []
     byShortId[ex.id].push({
-      type: log.set_type === 'myo_activation' ? 'act'
-          : log.set_type === 'myo_mini' ? 'mini'
-          : 'straight',
       w: Number(log.weight),
       reps: log.reps,
     })
@@ -124,19 +120,13 @@ function mapPreviousSetLogs(setLogs, day) {
 
 function formatLastSets(lastSets) {
   if (!lastSets || lastSets.length === 0) return null
-  const act = lastSets.find(s => s.type === 'act')
-  const minis = lastSets.filter(s => s.type === 'mini')
-  const straight = lastSets.filter(s => s.type !== 'act' && s.type !== 'mini')
-  if (act) {
-    const minisStr = minis.length ? ` + ${minis.length} mini (${minis.map(m => m.reps).join(',')})` : ''
-    return `${fmt(act.w)}lb × ${act.reps} act${minisStr}`
-  }
-  if (straight.length === 0) return null
-  const allSameW = straight.every(s => s.w === straight[0].w)
+  const work = lastSets.filter(s => s.type !== 'swap')
+  if (work.length === 0) return null
+  const allSameW = work.every(s => s.w === work[0].w)
   if (allSameW) {
-    return `${fmt(straight[0].w)}lb × ${straight.map(s => s.reps).join(', ')}`
+    return `${fmt(work[0].w)}lb × ${work.map(s => s.reps).join(', ')}`
   }
-  return straight.map(s => `${fmt(s.w)}×${s.reps}`).join(', ')
+  return work.map(s => `${fmt(s.w)}×${s.reps}`).join(', ')
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -296,7 +286,7 @@ function PeekModal({ split, currentDayKey, onClose }) {
                 <div style={{ fontSize: 15, fontWeight: 600, color: C.text }}>{ex.name}</div>
                 <div style={{ fontSize: 15, color: C.sub, marginTop: 2 }}>{targetStr(ex)}</div>
               </div>
-              <div style={{ fontSize: 15, color: ex.type === 'myo' ? C.orange : C.blue, letterSpacing: 1, fontWeight: 'bold' }}>{ex.type === 'myo' ? 'MYO' : 'SETS'}</div>
+              <div style={{ fontSize: 15, color: C.blue, letterSpacing: 1, fontWeight: 'bold' }}>SETS</div>
             </div>
           ))}
         </div>
@@ -337,29 +327,24 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
   const hasAnyLogs = workSets.length > 0
   const skipped = sets.some(s => s.type === 'swap')
   const lastSummary = formatLastSets(lastSets)
+  const targetSetCount = ex.sets ?? 0
+  const isFinalSet = targetSetCount > 0 && workSets.length === targetSetCount - 1
 
   // Determine default weight/reps for next set
-  const lastSet = [...workSets].reverse().find(s => s.type !== 'mini')
+  const lastSet = workSets[workSets.length - 1]
   const defaultWeight = lastSet?.w ?? ex.w ?? 0
   const defaultReps = lastSet?.reps ?? Math.round(((ex.min ?? 8) + (ex.max ?? ex.min ?? 8)) / 2)
 
   // Local form state (only when expanded)
   const [weight, setWeight] = useState(defaultWeight)
   const [reps, setReps] = useState(defaultReps)
-  const [mode, setMode] = useState('straight') // 'straight' | 'activation' | 'mini'
 
   // When entering expanded mode, reset to defaults
   useEffect(() => {
     if (expanded) {
-      const last = [...workSets].reverse().find(s => s.type !== 'mini')
+      const last = workSets[workSets.length - 1]
       setWeight(last?.w ?? ex.w ?? 0)
       setReps(last?.reps ?? Math.round(((ex.min ?? 8) + (ex.max ?? ex.min ?? 8)) / 2))
-      if (ex.type === 'myo') {
-        const hasActivation = workSets.some(s => s.type === 'act')
-        setMode(hasActivation ? 'mini' : 'activation')
-      } else {
-        setMode('straight')
-      }
     }
   }, [expanded, ex.id])
 
@@ -367,20 +352,9 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
 
   function doLogSet() {
     if (weight == null || reps == null || reps <= 0) return
-    let newSet
-    if (mode === 'activation') {
-      newSet = { type: 'act', w: weight, reps }
-    } else if (mode === 'mini') {
-      const miniCount = workSets.filter(s => s.type === 'mini').length
-      newSet = { type: 'mini', num: miniCount + 1, w: weight, reps }
-    } else {
-      const strCount = workSets.filter(s => s.type !== 'act' && s.type !== 'mini').length
-      newSet = { num: strCount + 1, w: weight, reps }
-    }
+    const strCount = workSets.length
+    const newSet = { num: strCount + 1, w: weight, reps }
     onLogSet(newSet)
-    // After logging: mini mode sticks at mini, straight increments set count
-    if (mode === 'activation') setMode('mini')
-    // Haptic
     if (navigator.vibrate) navigator.vibrate(30)
   }
 
@@ -407,7 +381,7 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
             ) : skipped ? (
               <div style={{ fontSize: 14, color: C.muted, fontWeight: 700, letterSpacing: 1 }}>SKIPPED</div>
             ) : (
-              <div style={{ fontSize: 14, color: ex.type === 'myo' ? C.orange : C.blue, fontWeight: 700, letterSpacing: 1 }}>{ex.type === 'myo' ? 'MYO' : 'SETS'}</div>
+              <div style={{ fontSize: 14, color: C.blue, fontWeight: 700, letterSpacing: 1 }}>SETS</div>
             )}
           </div>
         </div>
@@ -436,9 +410,7 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
       {workSets.length > 0 && (
         <div style={{ marginBottom: 14 }}>
           {workSets.map((s, i) => {
-            const label = s.type === 'act' ? 'Activation'
-                        : s.type === 'mini' ? `Mini ${s.num}`
-                        : `Set ${s.num}`
+            const label = `Set ${s.num ?? i + 1}`
             return (
               <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '10px 12px', background: C.innerBg, borderRadius: 8, marginBottom: 4 }}>
                 <div style={{ flex: 1, fontSize: 14, color: C.sub, fontWeight: 600 }}>{label}</div>
@@ -455,10 +427,13 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
         </div>
       )}
 
-      {/* Mode indicator for myo */}
-      {ex.type === 'myo' && (
-        <div style={{ fontSize: 12, color: C.orange, letterSpacing: 1, marginBottom: 8, fontWeight: 'bold' }}>
-          {mode === 'activation' ? 'LOG ACTIVATION SET' : 'LOG MINI SET'}
+      {/* Athlean-X final-set coaching: always show failure cue; intensifier if any. */}
+      {isFinalSet && (
+        <div style={{ fontSize: 13, color: C.orange, lineHeight: 1.4, marginBottom: 10, padding: '8px 10px', background: C.innerBg, borderRadius: 8, borderLeft: `3px solid ${C.orange}` }}>
+          <div><span style={{ fontWeight: 700, letterSpacing: 1, marginRight: 6 }}>FINAL SET:</span>take to technique failure</div>
+          {ex.intensifier && (
+            <div style={{ marginTop: 2 }}>↳ {ex.intensifier}</div>
+          )}
         </div>
       )}
 
@@ -528,8 +503,8 @@ function SessionScreen({
     if (ex?._exercise_id && supabaseSessionId) {
       writeExerciseSets({ sessionId: supabaseSessionId, exerciseUuid: ex._exercise_id, sets: next[exerciseId] })
     }
-    // Auto-start 60s rest after a non-mini set
-    if (newSet.type !== 'mini' && !timerEnd) startTimer(60)
+    // Auto-start 60s rest after a logged set
+    if (!timerEnd) startTimer(60)
   }
 
   function deleteSet(exerciseId, idx) {
@@ -586,6 +561,11 @@ function SessionScreen({
         <button onClick={() => setShowPeek(true)}
           style={{ background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 8, color: C.muted, fontSize: 13, fontWeight: 'bold', letterSpacing: 1, padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit', marginRight: 4 }}>DAYS</button>
         <div style={{ fontSize: 15, color: C.muted, fontFamily: 'monospace', fontWeight: 'bold' }}>{loggedCount}/{sessionExercises.length}</div>
+      </div>
+
+      {/* Athlean coaching strip — always visible reminder of the rules */}
+      <div style={{ flexShrink: 0, padding: '8px 18px', borderBottom: `0.5px solid ${C.border}`, background: C.innerBg, fontSize: 12, color: C.muted, letterSpacing: 0.3, lineHeight: 1.4 }}>
+        form cuts the set · don't lighten for tempo · last set to technique failure
       </div>
 
       {/* Exercise list */}
@@ -674,7 +654,7 @@ function ResultsScreen({ day, result, currentCycle, onDone, onBack }) {
                   {fmt(t.target_weight)}lb {arrow}
                 </div>
                 <div style={{ fontSize: 13, color: C.sub, marginTop: 2 }}>
-                  {t.target_sets ? t.target_sets + '×' : 'myo '}
+                  {t.target_sets ? t.target_sets + '×' : ''}
                   {t.target_reps_min}{t.target_reps_max !== t.target_reps_min ? '-' + t.target_reps_max : ''}
                 </div>
               </div>
@@ -767,9 +747,12 @@ function EditScreen({ split, onSave, onBack }) {
                         <div onClick={() => setEditingIdx(`${day.key}-${i}`)} style={{ cursor: 'pointer' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div style={{ fontSize: 15, fontWeight: 600, color: C.text }}>{ex.name}</div>
-                            <div style={{ fontSize: 13, color: ex.type === 'myo' ? C.orange : C.blue, fontWeight: 'bold', letterSpacing: 1 }}>{ex.type === 'myo' ? 'MYO' : 'SETS'}</div>
+                            <div style={{ fontSize: 13, color: C.blue, fontWeight: 'bold', letterSpacing: 1 }}>SETS</div>
                           </div>
                           <div style={{ fontSize: 14, color: C.muted, marginTop: 3 }}>{targetStr(ex)}</div>
+                          {ex.intensifier && (
+                            <div style={{ fontSize: 13, color: C.orange, marginTop: 3 }}>↳ {ex.intensifier}</div>
+                          )}
                         </div>
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -777,21 +760,11 @@ function EditScreen({ split, onSave, onBack }) {
                             <div style={{ fontSize: 12, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>NAME</div>
                             <input value={ex.name} onChange={e => updateExercise(day.key, i, 'name', e.target.value)} style={inputStyle} />
                           </div>
-                          <div style={{ display: 'flex', gap: 10 }}>
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: 12, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>TYPE</div>
-                              <select value={ex.type} onChange={e => updateExercise(day.key, i, 'type', e.target.value)} style={{ ...inputStyle, appearance: 'auto' }}>
-                                <option value="straight">Straight</option>
-                                <option value="myo">Myo</option>
-                              </select>
-                            </div>
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: 12, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>WEIGHT</div>
-                              <input type="number" value={ex.w ?? ''} placeholder="TBD" onChange={e => updateExercise(day.key, i, 'w', e.target.value)} style={inputStyle} />
-                            </div>
+                          <div>
+                            <div style={{ fontSize: 12, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>WEIGHT</div>
+                            <input type="number" value={ex.w ?? ''} placeholder="TBD" onChange={e => updateExercise(day.key, i, 'w', e.target.value)} style={inputStyle} />
                           </div>
-                          {ex.type === 'straight' && (
-                            <div style={{ display: 'flex', gap: 10 }}>
+                          <div style={{ display: 'flex', gap: 10 }}>
                               <div style={{ flex: 1 }}>
                                 <div style={{ fontSize: 12, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>SETS</div>
                                 <input type="number" value={ex.sets ?? ''} onChange={e => updateExercise(day.key, i, 'sets', e.target.value)} style={inputStyle} />
@@ -805,10 +778,13 @@ function EditScreen({ split, onSave, onBack }) {
                                 <input type="number" value={ex.max ?? ''} onChange={e => updateExercise(day.key, i, 'max', e.target.value)} style={inputStyle} />
                               </div>
                             </div>
-                          )}
                           <div>
                             <div style={{ fontSize: 12, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>NOTE</div>
                             <input value={ex.note || ''} placeholder="e.g. /side" onChange={e => updateExercise(day.key, i, 'note', e.target.value || undefined)} style={inputStyle} />
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 12, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>INTENSIFIER (FINAL SET)</div>
+                            <input value={ex.intensifier || ''} placeholder="e.g. Slow 3s eccentric + peak squeeze" onChange={e => updateExercise(day.key, i, 'intensifier', e.target.value || undefined)} style={inputStyle} />
                           </div>
                           <div style={{ display: 'flex', gap: 8 }}>
                             <button onClick={() => moveExercise(day.key, i, -1)} disabled={i === 0}
@@ -1224,9 +1200,9 @@ export default function App() {
       if (!ex) continue
       if (!logsByShortId[ex.id]) logsByShortId[ex.id] = []
       const w = Number(log.weight)
-      if (log.set_type === 'myo_activation') logsByShortId[ex.id].push({ type: 'act', w, reps: log.reps, rir: log.rir })
-      else if (log.set_type === 'myo_mini') logsByShortId[ex.id].push({ type: 'mini', num: log.set_number, w, reps: log.reps })
-      else logsByShortId[ex.id].push({ num: log.set_number, w, reps: log.reps, rir: log.rir })
+      // Old myo_activation / myo_mini rows from pre-Athlean-X sessions collapse
+      // into regular work sets on recovery — they're just historical data now.
+      logsByShortId[ex.id].push({ num: log.set_number || (logsByShortId[ex.id].length + 1), w, reps: log.reps, rir: log.rir })
     }
 
     setDayKey(key)

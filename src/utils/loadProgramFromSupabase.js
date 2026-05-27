@@ -41,6 +41,7 @@ export async function loadProgramFromSupabase(userId) {
         target_reps_max,
         note,
         short_id,
+        intensifier,
         exercises ( id, name )
       `)
       .eq('split_day_id', day.id)
@@ -77,6 +78,7 @@ export async function loadProgramFromSupabase(userId) {
           max: sde.target_reps_max,
           w: weightMap[sde.exercise_id] ?? null,
           note: sde.note ?? undefined,
+          intensifier: sde.intensifier ?? undefined,
         }
       }),
     }
@@ -186,6 +188,7 @@ export async function saveProgramToSupabase(userId, program, progress) {
         sort_order: i + 1,
         note: ex.note ?? null,
         short_id: ex.id,
+        intensifier: ex.intensifier ?? null,
       })
     }
     if (sdeRows.length) {

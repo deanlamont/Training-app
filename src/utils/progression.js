@@ -1,7 +1,7 @@
 // Simple progressive overload.
-//   Straight sets: hit the top of the rep range on every working set → +5lb.
-//                  Otherwise hold the weight, push reps.
-//   Myo-reps:      activation set hits 15+ reps → +5lb. Otherwise hold.
+//   Hit the top of the rep range on every working set → +5lb. Otherwise hold
+//   the weight and push reps. Old 'act'/'mini' set types from historical myo
+//   sessions are treated as regular work sets.
 // No RIR, no auto-deload. To back off a stalled lift, edit the weight manually.
 
 const DEFAULT_INCREMENT = 5
@@ -16,19 +16,6 @@ function decideOne(ex, sets) {
   }
 
   const increment = ex.increment ?? DEFAULT_INCREMENT
-
-  if (ex.type === 'myo') {
-    const activation = work.find(s => s.type === 'act') || work[0]
-    if (activation.reps >= 15) {
-      return {
-        nextWeight: (ex.w ?? activation.w) + increment,
-        status: 'up',
-        note: `+${increment}lb (activation hit ${activation.reps})`,
-      }
-    }
-    return { nextWeight: ex.w ?? activation.w, status: 'hold', note: 'hold, push reps' }
-  }
-
   const maxReps = ex.max ?? ex.min ?? 0
   const hitMax = work.every(s => s.reps >= maxReps)
 

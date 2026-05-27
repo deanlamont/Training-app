@@ -55,8 +55,13 @@ create table if not exists split_day_exercises (
   sort_order int not null,
   note text,
   short_id text,
+  intensifier text,
   created_at timestamptz default now()
 );
+
+-- Backfill column for pre-existing tables created before `intensifier` was added.
+alter table split_day_exercises
+  add column if not exists intensifier text;
 
 -- Required by seedUserData's upsert onConflict='split_day_id,short_id'.
 do $$ begin

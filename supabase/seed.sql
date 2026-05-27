@@ -45,6 +45,9 @@ insert into exercises (name, equipment_category, muscle_group, movement_type, we
   ('Nautilus Hamstring Curls',        'nautilus_stack', 'hamstrings', 'isolation', 5),
   -- Glutes / Abductors
   ('Hip Abductor Machine',            'nautilus_stack', 'glutes',     'isolation', 5),
+  ('Hip Thrust',                      'free_weight',    'glutes',     'compound',  5),
+  -- Conditioning
+  ('Kettlebell Swing',                'specialty',      'glutes',     'compound',  5),
   -- Triceps (additional)
   ('Cable Rope Overhead Extension',   'cable',          'triceps',    'isolation', 4.5),
   -- Shoulders (additional)

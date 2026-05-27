@@ -40,10 +40,8 @@ export function writeExerciseSets({ sessionId, exerciseUuid, sets }) {
     .map((s, i) => ({
       session_id: sessionId,
       exercise_id: exerciseUuid,
-      set_number: s.type === 'act' ? 0 : (s.num ?? i + 1),
-      set_type: s.type === 'act' ? 'myo_activation'
-              : s.type === 'mini' ? 'myo_mini'
-              : 'straight',
+      set_number: s.num ?? i + 1,
+      set_type: 'straight',
       weight: s.w,
       reps: s.reps,
       rir: s.rir ?? null,

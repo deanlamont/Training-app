@@ -23,8 +23,7 @@ training-app/
 │   │
 │   ├── components/
 │   │   ├── StraightSetLogger.jsx   🔲 Log weight/reps per set, RIR optional
-│   │   ├── MyoRepLogger.jsx        🔲 Activation set + mini sets UI
-│   │   ├── ExerciseCard.jsx        🔲 Wraps either logger, shows target
+│   │   ├── ExerciseCard.jsx        🔲 Logger + target + optional intensifier prompt on final set
 │   │   ├── SessionSummary.jsx      🔲 Post-session Claude results display
 │   │   ├── ProgressChart.jsx       🔲 Recharts weight-over-time per exercise
 │   │   └── FlagBadge.jsx           🔲 ⚠ plateau/stale/injury indicator
@@ -64,7 +63,8 @@ training-app/
 ### Step 4 — Workout Logger
 - Loops through `split_day_exercises` for today
 - StraightSetLogger: set number, weight input, reps input, optional RIR
-- MyoRepLogger: activation set, then 4 mini sets
+- On the final set, if the exercise has an `intensifier` (Athlean-X cue like
+  "Slow 3s eccentric + peak squeeze"), surface it as a coaching note
 - "Finish Session" → triggers processSession()
 
 ### Step 5 — Claude Integration (DONE ✅)
@@ -84,7 +84,8 @@ training-app/
 
 - Nautilus stack: 5lb horseshoe increments (so 148 → 153, not 150)
 - Cable stations: 4.5lb increments (standard cable stack)
-- Myo-rep activation: log as set_number=0, set_type='myo_activation'
-- Myo-rep minis: set_number=1-4, set_type='myo_mini'
+- All sets log as `set_type='straight'`. Historical `myo_activation` /
+  `myo_mini` rows from the pre-Athlean-X era still exist in `set_logs` and
+  display as plain work sets on history/recovery — never produced anew.
 - TBD weights in seed = null, Claude fills after first session for that day
 - Pull B weights are mostly TBD — will populate after first Pull B session
