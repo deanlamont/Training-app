@@ -37,9 +37,8 @@ export async function seedUserData(userId) {
     { day: 'push_a', ex: 'Cable Rope Overhead Extension',   sid: 'pa_rope_oh',  type: 'straight', sets: 3, min: 12, max: 12, order: 6 },
     { day: 'push_a', ex: 'Tricep Pushdowns',                sid: 'pa_pushdn',   type: 'straight', sets: 3, min: 12, max: 15, order: 7,  intensifier: 'Slow 3s eccentric + peak squeeze' },
     { day: 'push_a', ex: 'Nautilus Xpload Leg Press Incline', sid: 'pa_leg_pr',   type: 'straight', sets: 3, min: 10, max: 10, order: 8,  note: '/side' },
-    { day: 'push_a', ex: 'Nautilus Leg Extensions',         sid: 'pa_leg_ext',  type: 'straight', sets: 3, min: 12, max: 15, order: 9,  intensifier: 'Slow 3s eccentric + 1s squeeze at top' },
-    { day: 'push_a', ex: 'Cable Woodchop',                  sid: 'pa_woodchop', type: 'straight', sets: 2, min: 12, max: 12, order: 10, note: '/side' },
-    { day: 'push_a', ex: 'Kettlebell Swing',                sid: 'pa_kb',       type: 'straight', sets: 3, min: 15, max: 20, order: 11, note: 'conditioning finisher' },
+    { day: 'push_a', ex: 'Cable Woodchop',                  sid: 'pa_woodchop', type: 'straight', sets: 2, min: 12, max: 12, order: 9, note: '/side' },
+    { day: 'push_a', ex: 'Kettlebell Swing',                sid: 'pa_kb',       type: 'straight', sets: 3, min: 15, max: 20, order: 10, note: 'conditioning finisher' },
 
     // PUSH B
     { day: 'push_b', ex: 'Nautilus PL Flat Bench',          sid: 'pb_flat',     type: 'straight', sets: 4, min: 8,  max: 10, order: 1,  note: '/side' },
@@ -54,15 +53,16 @@ export async function seedUserData(userId) {
     { day: 'push_b', ex: 'Kettlebell Swing',                sid: 'pb_kb',       type: 'straight', sets: 3, min: 15, max: 20, order: 10, note: 'conditioning finisher' },
 
     // PULL A
-    { day: 'pull_a', ex: 'Nautilus Lat Pulldown overhand',    sid: 'pla_pd_over', type: 'straight', sets: 4, min: 8,  max: 10, order: 1 },
-    { day: 'pull_a', ex: 'Nautilus Chest Supported Row Mid',  sid: 'pla_row_mid', type: 'straight', sets: 3, min: 10, max: 12, order: 2 },
-    { day: 'pull_a', ex: 'Cable Face Pulls',                  sid: 'pla_fp',      type: 'straight', sets: 3, min: 15, max: 20, order: 3,  intensifier: '1s pause + squeeze at peak' },
-    { day: 'pull_a', ex: 'Cable Lat Prayers',                 sid: 'pla_lat_pr',  type: 'straight', sets: 3, min: 12, max: 15, order: 4,  intensifier: 'Slow 3s eccentric + lat squeeze' },
-    { day: 'pull_a', ex: 'Cable Curls',                       sid: 'pla_cc',      type: 'straight', sets: 3, min: 12, max: 15, order: 5,  intensifier: 'Slow 3s eccentric + peak squeeze' },
-    { day: 'pull_a', ex: 'Hammer Curls',                      sid: 'pla_hammer',  type: 'straight', sets: 3, min: 12, max: 12, order: 6 },
-    { day: 'pull_a', ex: 'Romanian Deadlift',                 sid: 'pla_rdl',     type: 'straight', sets: 3, min: 8,  max: 8,  order: 7 },
-    { day: 'pull_a', ex: 'Nautilus Hamstring Curls',          sid: 'pla_ham',     type: 'straight', sets: 3, min: 12, max: 15, order: 8,  intensifier: 'Slow 3s eccentric + 1s squeeze' },
-    { day: 'pull_a', ex: 'Kettlebell Swing',                  sid: 'pla_kb',      type: 'straight', sets: 3, min: 15, max: 20, order: 9, note: 'conditioning finisher' },
+    { day: 'pull_a', ex: 'Pull-up',                           sid: 'pla_pullup',  type: 'straight', sets: 3, min: 5,  max: 10, order: 1,  note: 'bodyweight (+/- assist)' },
+    { day: 'pull_a', ex: 'Nautilus Lat Pulldown overhand',    sid: 'pla_pd_over', type: 'straight', sets: 4, min: 8,  max: 10, order: 2 },
+    { day: 'pull_a', ex: 'Nautilus Chest Supported Row Mid',  sid: 'pla_row_mid', type: 'straight', sets: 3, min: 10, max: 12, order: 3 },
+    { day: 'pull_a', ex: 'Cable Face Pulls',                  sid: 'pla_fp',      type: 'straight', sets: 3, min: 15, max: 20, order: 4,  intensifier: '1s pause + squeeze at peak' },
+    { day: 'pull_a', ex: 'Cable Lat Prayers',                 sid: 'pla_lat_pr',  type: 'straight', sets: 3, min: 12, max: 15, order: 5,  intensifier: 'Slow 3s eccentric + lat squeeze' },
+    { day: 'pull_a', ex: 'Cable Curls',                       sid: 'pla_cc',      type: 'straight', sets: 3, min: 12, max: 15, order: 6,  intensifier: 'Slow 3s eccentric + peak squeeze' },
+    { day: 'pull_a', ex: 'Hammer Curls',                      sid: 'pla_hammer',  type: 'straight', sets: 3, min: 12, max: 12, order: 7 },
+    { day: 'pull_a', ex: 'Romanian Deadlift',                 sid: 'pla_rdl',     type: 'straight', sets: 3, min: 8,  max: 8,  order: 8 },
+    { day: 'pull_a', ex: 'Nautilus Hamstring Curls',          sid: 'pla_ham',     type: 'straight', sets: 3, min: 12, max: 15, order: 9,  intensifier: 'Slow 3s eccentric + 1s squeeze' },
+    { day: 'pull_a', ex: 'Kettlebell Swing',                  sid: 'pla_kb',      type: 'straight', sets: 3, min: 15, max: 20, order: 10, note: 'conditioning finisher' },
 
     // PULL B
     { day: 'pull_b', ex: 'Nautilus Lat Pulldown underhand',    sid: 'plb_pd_under', type: 'straight', sets: 4, min: 8,  max: 12, order: 1 },
@@ -118,7 +118,6 @@ export async function seedUserData(userId) {
     { day: 'push_a', ex: 'Cable Rope Overhead Extension',  w: 45,   sets: 3, min: 12, max: 12, rir: 2, type: 'straight' },
     { day: 'push_a', ex: 'Tricep Pushdowns',               w: 54,   sets: 3, min: 12, max: 15, rir: 1, type: 'straight' },
     { day: 'push_a', ex: 'Nautilus Xpload Leg Press Incline', w: 90,   sets: 3, min: 10, max: 10, rir: 2, type: 'straight' },
-    { day: 'push_a', ex: 'Nautilus Leg Extensions',        w: 120,  sets: 3, min: 12, max: 15, rir: 1, type: 'straight' },
     { day: 'push_a', ex: 'Kettlebell Swing',               w: 35,   sets: 3, min: 15, max: 20, rir: 1, type: 'straight' },
 
     // PUSH B
@@ -133,6 +132,7 @@ export async function seedUserData(userId) {
     { day: 'push_b', ex: 'Kettlebell Swing',               w: 35,   sets: 3, min: 15, max: 20, rir: 1, type: 'straight' },
 
     // PULL A
+    { day: 'pull_a', ex: 'Pull-up',                           w: 0,    sets: 3, min: 5,  max: 10, rir: 2, type: 'straight' },
     { day: 'pull_a', ex: 'Nautilus Lat Pulldown overhand',    w: 121,  sets: 4, min: 8,  max: 10, rir: 2, type: 'straight' },
     { day: 'pull_a', ex: 'Nautilus Chest Supported Row Mid',  w: 140,  sets: 3, min: 10, max: 12, rir: 2, type: 'straight' },
     { day: 'pull_a', ex: 'Cable Face Pulls',                  w: 43,   sets: 3, min: 15, max: 20, rir: 1, type: 'straight' },

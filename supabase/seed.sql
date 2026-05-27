@@ -22,6 +22,7 @@ insert into exercises (name, equipment_category, muscle_group, movement_type, we
   ('Tricep Overhead Extension',       'cable',          'triceps',    'isolation', 4.5),
   ('Close Grip DB Bench',             'free_weight',    'triceps',    'compound',  5),
   -- Back / Lats
+  ('Pull-up',                         'free_weight',    'back',       'compound',  5),
   ('Nautilus Lat Pulldown overhand',  'nautilus_stack', 'back',       'compound',  5),
   ('Nautilus Lat Pulldown underhand', 'nautilus_stack', 'back',       'compound',  5),
   ('Nautilus Chest Supported Row Mid','nautilus_stack', 'back',       'compound',  5),
