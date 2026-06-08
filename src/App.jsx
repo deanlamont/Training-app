@@ -821,6 +821,45 @@ function EditScreen({ split, onSave, onBack }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Mobility Screen (15-min pre-bed wind-down)
 // ═══════════════════════════════════════════════════════════════════════════
+// Render a note string with embedded URLs turned into clickable links.
+function linkifyNote(text) {
+  const parts = text.split(/(https?:\/\/\S+)/g)
+  return parts.map((part, i) =>
+    /^https?:\/\//.test(part)
+      ? <a key={i} href={part} target="_blank" rel="noreferrer" style={{ color: C.acc, textDecoration: 'underline', wordBreak: 'break-all' }}>{part}</a>
+      : part
+  )
+}
+
+// Read-only reference screen for informational days (Day 5 longevity content).
+// No logging, no Supabase session row — just formatted notes.
+function ReferenceScreen({ day, onBack }) {
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: '36px 20px 40px', background: C.bg }}>
+      <button onClick={onBack}
+        style={{ background: 'none', border: 'none', color: C.muted, fontSize: 15, fontWeight: 'bold', letterSpacing: 2, cursor: 'pointer', padding: '0 0 16px', fontFamily: 'inherit' }}>
+        ← BACK
+      </button>
+
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 15, color: C.acc, letterSpacing: 4, marginBottom: 8, fontWeight: 'bold' }}>{day.label.toUpperCase()}</div>
+        <div style={{ fontSize: 24, fontWeight: 700, color: C.text, lineHeight: 1.25 }}>{day.subtitle}</div>
+      </div>
+
+      {day.exercises.map((ex, i) => (
+        <div key={i} style={{ background: C.surface, border: `0.5px solid ${C.border}`, borderRadius: 12, padding: '16px 18px', marginBottom: 12 }}>
+          <div style={{ fontSize: 18, fontWeight: 700, color: C.text, marginBottom: 10 }}>{ex.name}</div>
+          {ex.note && (
+            <div style={{ fontSize: 14, color: C.sub, lineHeight: 1.6, whiteSpace: 'pre-line' }}>
+              {linkifyNote(ex.note)}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function MobilityScreen({ onBack }) {
   const totalSeconds = MOBILITY_ROUTINE.reduce((sum, m) => sum + m.duration, 0)
 
@@ -1093,8 +1132,16 @@ export default function App() {
   const currentCycle = dayKey ? (progress?.[dayKey]?.week ?? (dayKey === 'day_5' ? 1 : 3)) : 3
 
   async function startSession(key) {
+    // Day 5 is an informational reference page (longevity content), not a workout.
+    // Skip all session/logging setup.
+    if (key === 'day_5') {
+      setDayKey(key)
+      setScreen('reference')
+      return
+    }
+
     const day = split[key]
-    const cycle = progress[key]?.week ?? (key === 'day_5' ? 1 : 3)
+    const cycle = progress[key]?.week ?? 3
     const freshExercises = JSON.parse(JSON.stringify(day.exercises))
     setDayKey(key)
     setSessionLogs({})
@@ -1253,6 +1300,9 @@ export default function App() {
       )}
       {screen === 'mobility' && (
         <MobilityScreen onBack={() => setScreen('home')} />
+      )}
+      {screen === 'reference' && dayKey && (
+        <ReferenceScreen day={split[dayKey]} onBack={() => setScreen('home')} />
       )}
       {screen === 'edit' && (
         <EditScreen split={split} onSave={async s => {
