@@ -53,6 +53,13 @@ insert into exercises (name, equipment_category, muscle_group, movement_type, we
   ('Band Pull-apart',                 'specialty',      'rear_delt',  'isolation', 5),
   ('Dead Hang',                       'specialty',      'back',       'isolation', 5),
   ('Suitcase Carry',                  'free_weight',    'core',       'compound',  5),
+  -- Longevity / mobility (Day 5)
+  ('Japanese Interval Walking',       'specialty',      'cardio',     'compound',  0),
+  ('Asian Squat',                     'bodyweight',     'lower_body', 'compound',  0),
+  ('World''s Greatest Stretch',       'bodyweight',     'full_body',  'compound',  0),
+  ('Zone 2 Cardio',                   'specialty',      'cardio',     'compound',  0),
+  ('Plyometrics',                     'bodyweight',     'lower_body', 'compound',  0),
+  ('Farmer''s Carry',                 'free_weight',    'core',       'compound',  5),
   -- Triceps (additional)
   ('Cable Rope Overhead Extension',   'cable',          'triceps',    'isolation', 4.5),
   -- Shoulders (additional)

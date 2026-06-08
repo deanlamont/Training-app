@@ -6,7 +6,7 @@ export async function seedUserData(userId) {
     { day_key: 'push_b', day_label: 'Push B', subtitle: 'Flat Chest · Shoulders · Triceps · Legs',   sort_order: 2, current_week: 4 },
     { day_key: 'pull_a', day_label: 'Pull A', subtitle: 'Back Width · Biceps · Hamstrings',           sort_order: 3, current_week: 4 },
     { day_key: 'pull_b', day_label: 'Pull B', subtitle: 'Upper Back · Biceps · Hamstrings',           sort_order: 4, current_week: 4 },
-    { day_key: 'day_5',  day_label: 'Day 5',  subtitle: 'Arms · Core (Optional)',                     sort_order: 5, current_week: 4 },
+    { day_key: 'day_5',  day_label: 'Day 5',  subtitle: 'Longevity · Mobility (Optional)',            sort_order: 5, current_week: 4 },
   ];
 
   const { data: days, error: dErr } = await supabase
@@ -77,16 +77,123 @@ export async function seedUserData(userId) {
     { day: 'pull_b', ex: 'Suitcase Carry',                      sid: 'plb_suitcase', type: 'straight', sets: 2, min: 20, max: 20, order: 9, note: '/side, walking (anti-rotation core)' },
     { day: 'pull_b', ex: 'Kettlebell Swing',                    sid: 'plb_kb',       type: 'straight', sets: 3, min: 15, max: 20, order: 10, note: 'conditioning finisher' },
 
-    // DAY 5
-    { day: 'day_5', ex: 'EZ Bar Curls',                  sid: 'd5_ez',        type: 'straight', sets: 4, min: 10, max: 10, order: 1 },
-    { day: 'day_5', ex: 'Incline DB Curls',               sid: 'd5_inc_curl',  type: 'straight', sets: 3, min: 12, max: 15, order: 2,  intensifier: 'Slow 3s eccentric (deep stretch)' },
-    { day: 'day_5', ex: 'Tricep Pushdowns',               sid: 'd5_pushdn',    type: 'straight', sets: 3, min: 12, max: 15, order: 3,  intensifier: 'Slow 3s eccentric + peak squeeze' },
-    { day: 'day_5', ex: 'Cable Rope Overhead Extension',  sid: 'd5_rope_oh',   type: 'straight', sets: 3, min: 12, max: 12, order: 4 },
-    { day: 'day_5', ex: 'Arsenal Lateral Raises',         sid: 'd5_lat_r',     type: 'straight', sets: 3, min: 12, max: 15, order: 5, intensifier: 'Slow 3s eccentric + 1s pause at top' },
-    { day: 'day_5', ex: 'Arsenal Fly Machine',            sid: 'd5_fly',       type: 'straight', sets: 3, min: 12, max: 15, order: 6, intensifier: 'Slow 3s eccentric + peak squeeze' },
-    { day: 'day_5', ex: 'Ab Wheel Rollout',               sid: 'd5_ab_wheel',  type: 'straight', sets: 3, min: 10, max: 10, order: 7 },
-    { day: 'day_5', ex: 'Hanging Leg Raise',              sid: 'd5_leg_raise', type: 'straight', sets: 3, min: 12, max: 12, order: 8 },
-    { day: 'day_5', ex: 'Kettlebell Swing',               sid: 'd5_kb',        type: 'straight', sets: 3, min: 15, max: 20, order: 9, note: 'conditioning finisher' },
+    // DAY 5 — 7 longevity movements (single-set, notes-only; intermediate-tier defaults).
+    // Source: "I'm 46. These are 7 exercises I use to feel like I'm 26." — https://youtu.be/utBzlEiX-zA
+    { day: 'day_5', ex: 'Dead Hang',                  sid: 'd5_bar_hang',  type: 'straight', sets: 1, min: 60, max: 60, order: 1,
+      note: `BAR HANG
+
+WHY IT MATTERS
+Decompresses the spine, rebuilds the shoulders, and trains grip. Grip strength is a longevity biomarker — the 2018 BMJ study found low grip strength to be among the strongest predictors of early death (heart disease, cancer, all-cause mortality).
+
+THE MOVE
+Hang from a bar with arms straight. Shoulders open gently, ribs down, neck long.
+
+PROTOCOL
+• Beginner — chair-assisted, 5–10s
+• Intermediate — full dead hang 20–60s, build to 2 min/day
+• Advanced — 3 min/day across mixed grips, scapular pulls, one-arm hangs
+
+SOURCE
+https://youtu.be/utBzlEiX-zA` },
+    { day: 'day_5', ex: 'Japanese Interval Walking',  sid: 'd5_iwt',       type: 'straight', sets: 1, min: 30, max: 30, order: 2,
+      note: `JAPANESE INTERVAL WALKING (IWT)
+
+WHY IT MATTERS
+Reverses cardiovascular aging. VO2 max drops ~10%/decade after 30 — one of the biggest predictors of how long and how well you live. Original study in adults 60+ improved VO2 max, leg strength, and blood pressure more than steady-state walking in 5 months.
+
+THE MOVE
+Developed by Dr. Hiroshi Nose. Alternate fast walking (~70% effort) with slow walking. Repeat for 30 min, 4 days/week.
+
+PROTOCOL
+• Beginner — 2 min fast / 3 min slow
+• Intermediate — 3 min fast / 3 min slow for 30 min
+• Advanced — add incline or a weighted vest/rucksack
+
+SOURCE
+https://youtu.be/utBzlEiX-zA` },
+    { day: 'day_5', ex: 'Asian Squat',                sid: 'd5_asian_sq',  type: 'straight', sets: 1, min: 5,  max: 10, order: 3,
+      note: `ASIAN SQUAT
+
+WHY IT MATTERS
+The human resting position. Lose it and you lose ankle mobility, hip function, spinal health — eventually independence. Precursor to the sitting-rising test (2012, European Journal of Preventive Cardiology): people who struggled to sit and rise from the floor were 5× more likely to die within 6 years.
+
+THE MOVE
+Sit into a deep bodyweight squat with feet flat, chest tall. Hold and get comfortable.
+
+PROTOCOL
+• Beginner — hold a door frame or couch for support, heels elevated on books or a plate, 2–5 min/day
+• Intermediate — unassisted, 5–10 min/day broken across the day
+• Advanced — wider / asymmetric stances, overhead reach; make it your default resting position
+
+SOURCE
+https://youtu.be/utBzlEiX-zA` },
+    { day: 'day_5', ex: "World's Greatest Stretch",   sid: 'd5_wgs',       type: 'straight', sets: 1, min: 3,  max: 3,  order: 4,
+      note: `WORLD'S GREATEST STRETCH
+
+WHY IT MATTERS
+One flow that hits every joint that ages you — hips, T-spine, ankles, calves, shoulders. These joints lock down first, and stiffness in any of them shows up everywhere else. Hip mobility is one of the biggest predictors of fall risk; falls are the 2nd leading cause of accidental death worldwide.
+
+THE MOVE
+Lunge forward, drop the opposite hand to the floor inside the front foot, then rotate the same-side hand up toward the ceiling (T-spine rotation). Step through and switch sides.
+
+PROTOCOL
+• Beginner — walk through slowly, hold 2 breaths per position, skip the rotation
+• Intermediate — full flow with T-spine rotation, 3 reps/side
+• Advanced — add an overhead reach or hold a light weight in the rotation hand
+
+SOURCE
+https://youtu.be/utBzlEiX-zA` },
+    { day: 'day_5', ex: 'Zone 2 Cardio',              sid: 'd5_zone2',     type: 'straight', sets: 1, min: 45, max: 45, order: 5,
+      note: `ZONE 2 CARDIO
+
+WHY IT MATTERS
+Builds the engine for longevity. Mitochondria (cellular energy factories) shrink in number and quality with age — a core mechanism of aging itself. Zone 2 is the most effective way to reverse it. 2018 JAMA: low cardiorespiratory fitness predicted early death more strongly than smoking, diabetes, or heart disease.
+
+THE MOVE
+Steady aerobic effort at a pace where you can hold a conversation but it's slightly labored. Heart rate ~60–70% of max. Walk, cycle, easy row.
+
+PROTOCOL
+• Beginner — 3 × 30-min brisk walks/week (IWT works)
+• Intermediate — 4 × 45-min sessions
+• Advanced — 4 × 60-min sessions with a heart-rate monitor
+
+TIP
+Stack it with low-effort work — under-desk treadmill on meetings, exercise bike while watching videos.
+
+SOURCE
+https://youtu.be/utBzlEiX-zA` },
+    { day: 'day_5', ex: 'Plyometrics',                sid: 'd5_plyo',      type: 'straight', sets: 3, min: 5,  max: 8,  order: 6,
+      note: `PLYOMETRICS
+
+WHY IT MATTERS
+Fast-twitch fibers go first with age. Strength declines slowly, but power (strength × speed) declines ~2× as fast — 3–4%/year after 40. Power is what keeps you from falling and lets you catch yourself when you trip. Power loss is the single biggest predictor of fall-related death in older adults — bigger than strength loss, bigger than balance.
+
+THE MOVE
+Explosive jumps that train the nervous system to produce force fast. Match the variation to your level.
+
+PROTOCOL
+• Beginner — ankle pogos, calf jumps, line hops. Quiet landings — the ground should barely make a sound.
+• Intermediate — broad jumps, skater bounds, low box jumps. Learn to absorb force.
+• Advanced — depth jumps, bounding, single-leg hops.
+
+SOURCE
+https://youtu.be/utBzlEiX-zA` },
+    { day: 'day_5', ex: "Farmer's Carry",             sid: 'd5_farmer',    type: 'straight', sets: 3, min: 60, max: 60, order: 7,
+      note: `LOADED CARRIES
+
+WHY IT MATTERS
+Trains muscular endurance, grip, core, posture, breathing, and full-body structural integrity — all in one movement. Mimics real life: groceries, luggage, kids, furniture. Dr. Stuart McGill called loaded carries one of the single best exercises for spinal stability and core integrity.
+
+THE MOVE
+Pick up a heavy weight (kettlebell or dumbbell) and walk. Stand tall, ribs down, don't lean.
+
+PROTOCOL
+• Beginner — suitcase carry: one weight in one hand, 30s/side
+• Intermediate — farmer's carry: both hands, heavier load, 60s
+• Advanced — heavy farmer's carries at ~bodyweight per hand for 1+ min, plus overhead and mixed-grip variations
+
+SOURCE
+https://youtu.be/utBzlEiX-zA` },
   ];
 
   const sdeRows = sde.map(e => ({

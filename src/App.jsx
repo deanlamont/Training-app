@@ -647,7 +647,7 @@ function ResultsScreen({ day, result, currentCycle, onDone, onBack }) {
             <div key={i} style={{ borderBottom: `0.5px solid ${C.border}`, padding: '14px 0', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 16, fontWeight: 600, color: C.text }}>{t.exercise_name}</div>
-                {t.note && <div style={{ fontSize: 13, color, marginTop: 3 }}>↳ {t.note}</div>}
+                {t.note && <div style={{ fontSize: 13, color, marginTop: 3, whiteSpace: 'pre-line', lineHeight: 1.5 }}>↳ {t.note}</div>}
               </div>
               <div style={{ textAlign: 'right', flexShrink: 0 }}>
                 <div style={{ fontSize: 20, color, fontWeight: 800, fontFamily: 'monospace' }}>
@@ -780,7 +780,7 @@ function EditScreen({ split, onSave, onBack }) {
                             </div>
                           <div>
                             <div style={{ fontSize: 12, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>NOTE</div>
-                            <input value={ex.note || ''} placeholder="e.g. /side" onChange={e => updateExercise(day.key, i, 'note', e.target.value || undefined)} style={inputStyle} />
+                            <textarea value={ex.note || ''} placeholder="e.g. /side" rows={4} onChange={e => updateExercise(day.key, i, 'note', e.target.value || undefined)} style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
                           </div>
                           <div>
                             <div style={{ fontSize: 12, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>INTENSIFIER (FINAL SET)</div>
