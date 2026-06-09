@@ -131,7 +131,7 @@ export async function saveSessionTargets(userId, dayKey, splitDayId, targets, ex
   if (wkErr) throw new Error(`Cycle bump failed: ${wkErr.message}`)
 }
 
-const DAY_ORDER = { push_a: 1, push_b: 2, pull_a: 3, pull_b: 4, day_5: 5 }
+const DAY_ORDER = { push_a: 1, push_b: 2, pull_a: 3, pull_b: 4, day_5: 5, tennis_prep: 6 }
 
 /**
  * Persists an edited program back to Supabase. Replaces split_day_exercises

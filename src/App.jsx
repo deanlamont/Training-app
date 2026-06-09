@@ -18,8 +18,47 @@ import {
 import { computeNextTargets } from './utils/progression'
 import { subscribe as subscribeQueue, getStatus as getQueueStatus, clearFailed } from './utils/writeQueue'
 
-const APP_VERSION = 'v2026-04-24-rebuild'
+const APP_VERSION = 'v2026-06-09-tennis'
 const MESO = 1
+
+// Reference days are read-only notes screens, not logged workouts (no session
+// row, no progression, no localStorage backstop).
+const REFERENCE_DAY_KEYS = new Set(['day_5', 'tennis_prep'])
+
+// ─── Active-session localStorage backstop ────────────────────────────────────
+// iOS Safari kills background tabs aggressively, wiping React state. Mirror
+// the in-progress session to localStorage so a tab kill mid-workout doesn't
+// lose logged sets that hadn't flushed to Supabase yet.
+const ACTIVE_SESSION_KEY = 'swolebro_active_session'
+function readActiveSession() {
+  try {
+    const raw = localStorage.getItem(ACTIVE_SESSION_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch { return null }
+}
+function writeActiveSession(state) {
+  try { localStorage.setItem(ACTIVE_SESSION_KEY, JSON.stringify(state)) } catch {}
+}
+function clearActiveSession() {
+  try { localStorage.removeItem(ACTIVE_SESSION_KEY) } catch {}
+}
+
+// ─── Home Workout (local-only daily counter) ────────────────────────────────
+const HOME_WORKOUT_KEY = 'swolebro_home_workout'
+const HOME_WORKOUT_TARGET = 100
+function todayKey() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+function readHomeWorkout() {
+  try {
+    const raw = localStorage.getItem(HOME_WORKOUT_KEY)
+    return raw ? JSON.parse(raw) : { logs: {} }
+  } catch { return { logs: {} } }
+}
+function writeHomeWorkout(state) {
+  try { localStorage.setItem(HOME_WORKOUT_KEY, JSON.stringify(state)) } catch {}
+}
 
 // ─── Theme ───────────────────────────────────────────────────────────────────
 const C = {
@@ -132,10 +171,11 @@ function formatLastSets(lastSets) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Home Screen
 // ═══════════════════════════════════════════════════════════════════════════
-function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSession, activeSessionKey, onResumeSession, onRecover, onMobility, userEmail, onSignOut }) {
+function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSession, activeSessionKey, onResumeSession, onRecover, onMobility, onHomeWorkout, userEmail, onSignOut }) {
   const days = Object.values(split)
-  const mainDays = days.filter(d => d.key !== 'day_5')
+  const mainDays = days.filter(d => !REFERENCE_DAY_KEYS.has(d.key))
   const optDay = days.find(d => d.key === 'day_5')
+  const tennisDay = days.find(d => d.key === 'tennis_prep')
   const [expandedIdx, setExpandedIdx] = useState(null)
   const recentHistory = history.slice(0, 3)
 
@@ -211,12 +251,32 @@ function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSessio
         })}
       </div>
 
+      {tennisDay && (
+        <button onClick={() => onStart('tennis_prep')}
+          style={{ width: '100%', marginBottom: 12, padding: '18px 20px', background: C.surface, border: `0.5px solid ${C.orange}`, borderLeft: `3px solid ${C.orange}`, borderRadius: 14, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 600, color: C.text }}>{tennisDay.label}</div>
+            <div style={{ fontSize: 15, color: C.sub, marginTop: 2 }}>{tennisDay.sub}</div>
+          </div>
+          <div style={{ fontSize: 15, color: C.orange, fontWeight: 'bold', letterSpacing: 1 }}>DAILY</div>
+        </button>
+      )}
+
+      <button onClick={onHomeWorkout}
+        style={{ width: '100%', marginBottom: 12, padding: '18px 20px', background: C.surface, border: `0.5px solid ${C.acc}`, borderLeft: `3px solid ${C.acc}`, borderRadius: 14, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <div style={{ fontSize: 17, fontWeight: 600, color: C.text }}>Home Workout</div>
+          <div style={{ fontSize: 15, color: C.sub, marginTop: 2 }}>100 KB Swings · Air Squats</div>
+        </div>
+        <div style={{ fontSize: 15, color: C.acc, fontWeight: 'bold', letterSpacing: 1 }}>EVERY DAY</div>
+      </button>
+
       {optDay && (
         <button onClick={() => onStart('day_5')}
           style={{ width: '100%', marginBottom: 12, padding: '18px 20px', background: C.surface, border: `0.5px dashed ${C.border}`, borderRadius: 14, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <div style={{ fontSize: 17, fontWeight: 600, color: C.text }}>Day 5 — Optional</div>
-            <div style={{ fontSize: 15, color: C.sub, marginTop: 2 }}>Arms · Abs · Weak Points</div>
+            <div style={{ fontSize: 17, fontWeight: 600, color: C.text }}>{optDay.label} — Optional</div>
+            <div style={{ fontSize: 15, color: C.sub, marginTop: 2 }}>{optDay.sub}</div>
           </div>
           <div style={{ fontSize: 15, color: C.muted, fontWeight: 'bold', letterSpacing: 1 }}>CYCLE {progress['day_5']?.week ?? 1}</div>
         </button>
@@ -472,39 +532,16 @@ function SessionScreen({
   const [expandedId, setExpandedId] = useState(null)
   const [showPeek, setShowPeek] = useState(false)
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false)
-  const [timerEnd, setTimerEnd] = useState(null)
-  const [timerDuration, setTimerDuration] = useState(null)
-  const [timerNow, setTimerNow] = useState(Date.now())
-
-  useEffect(() => {
-    const id = setInterval(() => setTimerNow(Date.now()), 250)
-    return () => clearInterval(id)
-  }, [])
-
-  function startTimer(secs) { setTimerDuration(secs); setTimerEnd(Date.now() + secs * 1000) }
-  function cancelTimer() { setTimerEnd(null); setTimerDuration(null) }
-
-  const timerRemaining = timerEnd ? Math.max(0, Math.ceil((timerEnd - timerNow) / 1000)) : null
-  const timerDone = timerEnd && timerRemaining === 0
-  useEffect(() => {
-    if (timerDone) {
-      if (navigator.vibrate) navigator.vibrate([200, 100, 200])
-      setTimerEnd(null); setTimerDuration(null)
-    }
-  }, [timerDone])
 
   const loggedCount = sessionExercises.filter(ex => (sessionLogs[ex.id] || []).some(s => s.type !== 'swap')).length
 
   function logSet(exerciseId, newSet) {
     const next = { ...sessionLogs, [exerciseId]: [...(sessionLogs[exerciseId] || []).filter(s => s.type !== 'swap'), newSet] }
     setSessionLogs(next)
-    // Fire async Supabase write
     const ex = sessionExercises.find(e => e.id === exerciseId)
     if (ex?._exercise_id && supabaseSessionId) {
       writeExerciseSets({ sessionId: supabaseSessionId, exerciseUuid: ex._exercise_id, sets: next[exerciseId] })
     }
-    // Auto-start 60s rest after a logged set
-    if (!timerEnd) startTimer(60)
   }
 
   function deleteSet(exerciseId, idx) {
@@ -589,34 +626,6 @@ function SessionScreen({
           style={{ width: '100%', marginTop: 12, padding: 18, background: loggedCount === 0 ? C.border : C.acc, border: 'none', borderRadius: 14, color: '#fff', fontSize: 17, fontWeight: 800, letterSpacing: 1, cursor: loggedCount === 0 ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
           FINISH SESSION
         </button>
-      </div>
-
-      {/* Rest timer bar */}
-      <div style={{ flexShrink: 0, borderTop: `0.5px solid ${C.border}`, background: C.surface }}>
-        {timerEnd ? (
-          <div onClick={cancelTimer} style={{ cursor: 'pointer', padding: '12px 18px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <div style={{ fontSize: 13, color: C.muted, fontWeight: 'bold', letterSpacing: 1 }}>REST</div>
-              <div style={{ fontSize: 24, fontWeight: 800, color: C.acc, fontFamily: 'monospace' }}>
-                {Math.floor(timerRemaining / 60)}:{String(timerRemaining % 60).padStart(2, '0')}
-              </div>
-              <div style={{ fontSize: 13, color: C.muted, letterSpacing: 1 }}>TAP TO CANCEL</div>
-            </div>
-            <div style={{ height: 4, background: C.border, borderRadius: 2, overflow: 'hidden' }}>
-              <div style={{ height: '100%', background: C.acc, borderRadius: 2, transition: 'width 0.25s linear', width: `${(timerRemaining / timerDuration) * 100}%` }} />
-            </div>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', alignItems: 'center', padding: '10px 18px', gap: 8 }}>
-            <div style={{ fontSize: 13, color: C.muted, fontWeight: 'bold', letterSpacing: 1, marginRight: 4 }}>REST</div>
-            {[['60s', 60], ['90s', 90], ['2m', 120], ['3m', 180]].map(([label, secs]) => (
-              <button key={label} onClick={() => startTimer(secs)}
-                style={{ flex: 1, padding: '9px 0', background: C.bg, border: `0.5px solid ${C.border}`, borderRadius: 10, color: C.sub, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-                {label}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
     </>
   )
@@ -863,7 +872,6 @@ function ReferenceScreen({ day, onBack }) {
 function MobilityScreen({ onBack }) {
   const totalSeconds = MOBILITY_ROUTINE.reduce((sum, m) => sum + m.duration, 0)
 
-  // Auto-reset completion if the stored entries are from a previous day
   const [completed, setCompletedRaw] = useState(() => {
     let stored = {}
     try { stored = JSON.parse(localStorage.getItem(MOBILITY_DONE_KEY) || '{}') } catch {}
@@ -876,51 +884,20 @@ function MobilityScreen({ onBack }) {
     return stored
   })
 
-  const [activeId, setActiveId] = useState(null)
-  const [secondsLeft, setSecondsLeft] = useState(0)
-  const [running, setRunning] = useState(false)
-
   function setCompleted(next) {
     setCompletedRaw(next)
     try { localStorage.setItem(MOBILITY_DONE_KEY, JSON.stringify(next)) } catch {}
   }
 
-  function startMove(move) {
-    setActiveId(move.id)
-    setSecondsLeft(move.duration)
-    setRunning(true)
-  }
-
-  function markDone(id) {
-    setCompleted({ ...completed, [id]: Date.now() })
-    if (activeId === id) { setActiveId(null); setRunning(false); setSecondsLeft(0) }
-    if (navigator.vibrate) navigator.vibrate(40)
-  }
-
-  function unmark(id) {
+  function toggleDone(id) {
     const next = { ...completed }
-    delete next[id]
+    if (next[id]) delete next[id]
+    else next[id] = Date.now()
     setCompleted(next)
+    if (navigator.vibrate) navigator.vibrate(30)
   }
 
-  function resetAll() {
-    setCompleted({})
-    setActiveId(null); setRunning(false); setSecondsLeft(0)
-  }
-
-  useEffect(() => {
-    if (!running) return
-    if (secondsLeft <= 0) {
-      if (activeId) {
-        setCompleted({ ...completed, [activeId]: Date.now() })
-        if (navigator.vibrate) navigator.vibrate([60, 40, 60])
-        setActiveId(null); setRunning(false); setSecondsLeft(0)
-      }
-      return
-    }
-    const t = setTimeout(() => setSecondsLeft(s => s - 1), 1000)
-    return () => clearTimeout(t)
-  }, [running, secondsLeft, activeId])
+  function resetAll() { setCompleted({}) }
 
   const doneCount = Object.keys(completed).length
   const allDone = doneCount === MOBILITY_ROUTINE.length
@@ -945,7 +922,7 @@ function MobilityScreen({ onBack }) {
         </div>
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontSize: 12, color: C.muted, letterSpacing: 1, fontWeight: 'bold' }}>TOTAL</div>
-          <div style={{ fontSize: 17, color: C.text, fontWeight: 700 }}>{Math.round(totalSeconds / 60)} min</div>
+          <div style={{ fontSize: 17, color: C.text, fontWeight: 700 }}>~{Math.round(totalSeconds / 60)} min</div>
         </div>
       </div>
 
@@ -957,11 +934,10 @@ function MobilityScreen({ onBack }) {
 
       {MOBILITY_ROUTINE.map(move => {
         const isDone = !!completed[move.id]
-        const isActive = activeId === move.id
-        const accent = isActive ? C.acc : isDone ? C.acc : C.border
+        const accent = isDone ? C.acc : C.border
         return (
-          <div key={move.id}
-            style={{ background: isDone ? C.innerBg : C.surface, border: `0.5px solid ${isActive ? C.acc : C.border}`, borderLeft: `3px solid ${accent}`, borderRadius: 12, padding: '14px 16px', marginBottom: 8 }}>
+          <button key={move.id} onClick={() => toggleDone(move.id)}
+            style={{ width: '100%', textAlign: 'left', background: isDone ? C.innerBg : C.surface, border: `0.5px solid ${C.border}`, borderLeft: `3px solid ${accent}`, borderRadius: 12, padding: '14px 16px', marginBottom: 8, cursor: 'pointer', fontFamily: 'inherit', color: C.text }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -973,47 +949,16 @@ function MobilityScreen({ onBack }) {
                 <div style={{ fontSize: 14, color: C.sub, marginTop: 4, lineHeight: 1.4 }}>{move.description}</div>
               </div>
               <div style={{ flexShrink: 0, textAlign: 'right' }}>
-                <div style={{ fontSize: 13, color: C.blue, fontWeight: 700, letterSpacing: 1 }}>{fmtClock(move.duration)}</div>
+                <div style={{ fontSize: 13, color: C.blue, fontWeight: 700, letterSpacing: 1 }}>~{fmtClock(move.duration)}</div>
                 {move.perSide && (
                   <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, letterSpacing: 1, marginTop: 2 }}>BOTH SIDES</div>
                 )}
+                <div style={{ fontSize: 20, fontWeight: 700, color: isDone ? C.acc : C.border, marginTop: 6 }}>
+                  {isDone ? '✓' : '○'}
+                </div>
               </div>
             </div>
-
-            {isActive ? (
-              <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div style={{ flex: 1, fontSize: 28, fontWeight: 700, color: C.acc, fontFamily: 'monospace', textAlign: 'center', background: C.innerBg, borderRadius: 8, padding: '8px 0' }}>
-                  {fmtClock(secondsLeft)}
-                </div>
-                <button onClick={() => setRunning(r => !r)}
-                  style={{ padding: '12px 14px', background: C.surface, border: `0.5px solid ${C.border}`, borderRadius: 10, color: C.text, fontSize: 13, fontWeight: 700, letterSpacing: 1, cursor: 'pointer', fontFamily: 'inherit' }}>
-                  {running ? 'PAUSE' : 'RESUME'}
-                </button>
-                <button onClick={() => markDone(move.id)}
-                  style={{ padding: '12px 14px', background: C.acc, border: 'none', borderRadius: 10, color: '#fff', fontSize: 13, fontWeight: 700, letterSpacing: 1, cursor: 'pointer', fontFamily: 'inherit' }}>
-                  DONE
-                </button>
-              </div>
-            ) : (
-              <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
-                <button onClick={() => startMove(move)}
-                  style={{ flex: 1, padding: '11px 0', background: isDone ? 'none' : C.acc, border: isDone ? `0.5px solid ${C.border}` : 'none', borderRadius: 10, color: isDone ? C.sub : '#fff', fontSize: 14, fontWeight: 700, letterSpacing: 1, cursor: 'pointer', fontFamily: 'inherit' }}>
-                  {isDone ? 'REDO' : 'START'}
-                </button>
-                {isDone ? (
-                  <button onClick={() => unmark(move.id)}
-                    style={{ padding: '11px 16px', background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 10, color: C.acc, fontSize: 14, fontWeight: 700, letterSpacing: 1, cursor: 'pointer', fontFamily: 'inherit' }}>
-                    ✓
-                  </button>
-                ) : (
-                  <button onClick={() => markDone(move.id)}
-                    style={{ padding: '11px 16px', background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 10, color: C.muted, fontSize: 14, fontWeight: 700, letterSpacing: 1, cursor: 'pointer', fontFamily: 'inherit' }}>
-                    SKIP
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
+          </button>
         )
       })}
 
@@ -1023,6 +968,149 @@ function MobilityScreen({ onBack }) {
           RESET ROUTINE
         </button>
       )}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Home Workout Screen — daily KB swings + air squats, local-only counter
+// ═══════════════════════════════════════════════════════════════════════════
+function HomeWorkoutScreen({ onBack }) {
+  const [state, setStateRaw] = useState(() => readHomeWorkout())
+  const today = todayKey()
+  const todayLog = state.logs?.[today] ?? { kb_swings: 0, air_squats: 0 }
+
+  function update(next) {
+    setStateRaw(next)
+    writeHomeWorkout(next)
+  }
+
+  function bump(field, delta) {
+    const cur = state.logs?.[today]?.[field] ?? 0
+    const updated = Math.max(0, cur + delta)
+    const nextLogs = { ...(state.logs ?? {}), [today]: { ...todayLog, [field]: updated } }
+    update({ ...state, logs: nextLogs })
+    if (delta > 0 && navigator.vibrate) navigator.vibrate(20)
+  }
+
+  function resetToday() {
+    const nextLogs = { ...(state.logs ?? {}) }
+    delete nextLogs[today]
+    update({ ...state, logs: nextLogs })
+  }
+
+  // Build last 7 days summary (today + 6 prior), newest first
+  const last7 = []
+  const d = new Date()
+  for (let i = 0; i < 7; i++) {
+    const dt = new Date(d.getFullYear(), d.getMonth(), d.getDate() - i)
+    const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+    const log = state.logs?.[key] ?? { kb_swings: 0, air_squats: 0 }
+    last7.push({ key, dt, log })
+  }
+
+  const kbPct = Math.min(100, Math.round((todayLog.kb_swings / HOME_WORKOUT_TARGET) * 100))
+  const kbDone = todayLog.kb_swings >= HOME_WORKOUT_TARGET
+
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: '36px 20px 40px', background: C.bg }}>
+      <button onClick={onBack}
+        style={{ background: 'none', border: 'none', color: C.muted, fontSize: 15, fontWeight: 'bold', letterSpacing: 2, cursor: 'pointer', padding: '0 0 16px', fontFamily: 'inherit' }}>
+        ← BACK
+      </button>
+
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 15, color: C.acc, letterSpacing: 4, marginBottom: 8, fontWeight: 'bold' }}>HOME WORKOUT</div>
+        <div style={{ fontSize: 28, fontWeight: 700, color: C.text, lineHeight: 1.2 }}>Every Day</div>
+        <div style={{ fontSize: 14, color: C.sub, marginTop: 4 }}>Local only · resets at midnight</div>
+      </div>
+
+      {/* KB Swings */}
+      <div style={{ background: C.surface, border: `0.5px solid ${C.border}`, borderLeft: `3px solid ${kbDone ? C.acc : C.border}`, borderRadius: 14, padding: '18px 20px', marginBottom: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+          <div style={{ fontSize: 17, fontWeight: 700, color: C.text }}>Kettlebell Swings</div>
+          <div style={{ fontSize: 13, color: C.muted, fontWeight: 'bold', letterSpacing: 1 }}>{HOME_WORKOUT_TARGET}/DAY</div>
+        </div>
+        <div style={{ fontSize: 44, fontWeight: 800, color: kbDone ? C.acc : C.text, fontFamily: 'monospace', textAlign: 'center', padding: '8px 0' }}>
+          {todayLog.kb_swings}
+          <span style={{ fontSize: 22, color: C.muted, fontWeight: 600 }}> / {HOME_WORKOUT_TARGET}</span>
+        </div>
+        <div style={{ height: 6, background: C.border, borderRadius: 3, overflow: 'hidden', marginBottom: 14 }}>
+          <div style={{ height: '100%', background: C.acc, width: `${kbPct}%`, transition: 'width 0.2s' }} />
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {[10, 25, 50].map(n => (
+            <button key={n} onClick={() => bump('kb_swings', n)}
+              style={{ flex: 1, padding: '12px 0', background: C.acc, border: 'none', borderRadius: 10, color: '#fff', fontSize: 15, fontWeight: 800, letterSpacing: 1, cursor: 'pointer', fontFamily: 'inherit' }}>
+              +{n}
+            </button>
+          ))}
+          <button onClick={() => bump('kb_swings', -10)}
+            style={{ padding: '12px 14px', background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 10, color: C.muted, fontSize: 15, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+            −10
+          </button>
+        </div>
+        {kbDone && (
+          <div style={{ marginTop: 12, fontSize: 13, color: C.acc, fontWeight: 700, letterSpacing: 1, textAlign: 'center' }}>
+            ✓ DONE FOR TODAY
+          </div>
+        )}
+      </div>
+
+      {/* Air Squats */}
+      <div style={{ background: C.surface, border: `0.5px solid ${C.border}`, borderRadius: 14, padding: '18px 20px', marginBottom: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+          <div style={{ fontSize: 17, fontWeight: 700, color: C.text }}>Air Squats</div>
+          <div style={{ fontSize: 13, color: C.muted, fontWeight: 'bold', letterSpacing: 1 }}>BONUS</div>
+        </div>
+        <div style={{ fontSize: 36, fontWeight: 800, color: C.text, fontFamily: 'monospace', textAlign: 'center', padding: '6px 0 12px' }}>
+          {todayLog.air_squats}
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {[10, 25, 50].map(n => (
+            <button key={n} onClick={() => bump('air_squats', n)}
+              style={{ flex: 1, padding: '12px 0', background: C.surface, border: `0.5px solid ${C.acc}`, borderRadius: 10, color: C.acc, fontSize: 15, fontWeight: 800, letterSpacing: 1, cursor: 'pointer', fontFamily: 'inherit' }}>
+              +{n}
+            </button>
+          ))}
+          <button onClick={() => bump('air_squats', -10)}
+            style={{ padding: '12px 14px', background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 10, color: C.muted, fontSize: 15, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+            −10
+          </button>
+        </div>
+      </div>
+
+      {/* Last 7 days */}
+      <div style={{ fontSize: 13, color: C.muted, letterSpacing: 2, fontWeight: 'bold', margin: '20px 0 10px' }}>LAST 7 DAYS</div>
+      <div style={{ background: C.surface, border: `0.5px solid ${C.border}`, borderRadius: 12, overflow: 'hidden' }}>
+        {last7.map((d, i) => {
+          const isToday = i === 0
+          const hit100 = d.log.kb_swings >= HOME_WORKOUT_TARGET
+          const dateStr = d.dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+          return (
+            <div key={d.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: i < last7.length - 1 ? `0.5px solid ${C.border}` : 'none', background: isToday ? C.innerBg : 'none' }}>
+              <div style={{ fontSize: 14, color: isToday ? C.text : C.sub, fontWeight: isToday ? 700 : 500 }}>
+                {dateStr}{isToday ? ' · today' : ''}
+              </div>
+              <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+                <div style={{ fontSize: 14, color: hit100 ? C.acc : C.muted, fontWeight: 700, fontFamily: 'monospace' }}>
+                  {d.log.kb_swings} KB{hit100 ? ' ✓' : ''}
+                </div>
+                {d.log.air_squats > 0 && (
+                  <div style={{ fontSize: 13, color: C.muted, fontFamily: 'monospace' }}>
+                    {d.log.air_squats} sq
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      <button onClick={resetToday}
+        style={{ width: '100%', marginTop: 16, padding: '12px 0', background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 12, color: C.muted, fontSize: 13, fontWeight: 'bold', letterSpacing: 2, cursor: 'pointer', fontFamily: 'inherit' }}>
+        RESET TODAY
+      </button>
     </div>
   )
 }
@@ -1117,24 +1205,33 @@ export default function App() {
     setHistory(hist)
   }
 
-  // Session state (persisted)
-  // Session state lives in React only — refreshing the tab clears it.
-  // The "Recover last cloud session" button on Home re-hydrates from Supabase.
-  const [dayKey, setDayKey]                   = useState(null)
-  const [sessionLogs, setSessionLogs]         = useState({})
-  const [sessionExercises, setSessionExercises] = useState([])
-  const [sessionScreen, setSessionScreen]     = useState('session')
-  const [sessionResult, setSessionResult]     = useState(null)
-  const [supabaseSessionId, setSupabaseSessionId] = useState(null)
-  const [lastSessionLogs, setLastSessionLogs] = useState({})
+  // Session state is mirrored to localStorage on every change so a tab kill
+  // (iOS Safari constantly does this in the background) doesn't lose in-flight
+  // sets. Cloud writes are still the source of truth at session end; this is
+  // a backstop for the in-progress window. Cleared on saveAndGoHome.
+  const [dayKey, setDayKey]                   = useState(() => readActiveSession()?.dayKey ?? null)
+  const [sessionLogs, setSessionLogs]         = useState(() => readActiveSession()?.sessionLogs ?? {})
+  const [sessionExercises, setSessionExercises] = useState(() => readActiveSession()?.sessionExercises ?? [])
+  const [sessionScreen, setSessionScreen]     = useState(() => readActiveSession()?.sessionScreen ?? 'session')
+  const [sessionResult, setSessionResult]     = useState(() => readActiveSession()?.sessionResult ?? null)
+  const [supabaseSessionId, setSupabaseSessionId] = useState(() => readActiveSession()?.supabaseSessionId ?? null)
+  const [lastSessionLogs, setLastSessionLogs] = useState(() => readActiveSession()?.lastSessionLogs ?? {})
 
-  const hasActiveSession = !!dayKey && sessionExercises.length > 0
-  const currentCycle = dayKey ? (progress?.[dayKey]?.week ?? (dayKey === 'day_5' ? 1 : 3)) : 3
+  useEffect(() => {
+    if (!dayKey || REFERENCE_DAY_KEYS.has(dayKey)) {
+      clearActiveSession()
+      return
+    }
+    writeActiveSession({ dayKey, sessionLogs, sessionExercises, sessionScreen, sessionResult, supabaseSessionId, lastSessionLogs })
+  }, [dayKey, sessionLogs, sessionExercises, sessionScreen, sessionResult, supabaseSessionId, lastSessionLogs])
+
+  const hasActiveSession = !!dayKey && sessionExercises.length > 0 && !REFERENCE_DAY_KEYS.has(dayKey)
+  const currentCycle = dayKey ? (progress?.[dayKey]?.week ?? (REFERENCE_DAY_KEYS.has(dayKey) ? 1 : 3)) : 3
 
   async function startSession(key) {
-    // Day 5 is an informational reference page (longevity content), not a workout.
-    // Skip all session/logging setup.
-    if (key === 'day_5') {
+    // Reference days (Day 5 longevity, Tennis Prep) are informational only.
+    // Skip session/logging setup and route to the read-only ReferenceScreen.
+    if (REFERENCE_DAY_KEYS.has(key)) {
       setDayKey(key)
       setScreen('reference')
       return
@@ -1296,10 +1393,14 @@ export default function App() {
           hasActiveSession={hasActiveSession} activeSessionKey={dayKey}
           onResumeSession={() => setScreen('session')} onRecover={recoverLatest}
           onMobility={() => setScreen('mobility')}
+          onHomeWorkout={() => setScreen('home_workout')}
           userEmail={user.email} onSignOut={signOut} />
       )}
       {screen === 'mobility' && (
         <MobilityScreen onBack={() => setScreen('home')} />
+      )}
+      {screen === 'home_workout' && (
+        <HomeWorkoutScreen onBack={() => setScreen('home')} />
       )}
       {screen === 'reference' && dayKey && (
         <ReferenceScreen day={split[dayKey]} onBack={() => setScreen('home')} />
