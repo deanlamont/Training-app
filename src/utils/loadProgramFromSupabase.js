@@ -122,6 +122,8 @@ export async function saveSessionTargets(userId, dayKey, splitDayId, targets, ex
       onConflict: 'user_id,exercise_id,split_day_id,week_number,mesocycle',
     })
     if (upErr) throw new Error(`Target upsert failed: ${upErr.message}`)
+
+    await mirrorWeightsToSharedDays(userId, splitDayId, targetRows)
   }
 
   const { error: wkErr } = await supabase
@@ -129,6 +131,54 @@ export async function saveSessionTargets(userId, dayKey, splitDayId, targets, ex
     .update({ current_week: nextCycle })
     .eq('id', splitDayId)
   if (wkErr) throw new Error(`Cycle bump failed: ${wkErr.message}`)
+}
+
+/**
+ * After a target is written for one (exercise, split_day), copy the weight to
+ * every other split_day owned by this user that contains the same exercise.
+ *
+ * The destination day's own sets/reps/set_type stay intact — only target_weight
+ * is mirrored. Each mirrored row is written at the destination day's
+ * current_week so the next session load picks it up.
+ */
+async function mirrorWeightsToSharedDays(userId, sourceSplitDayId, sourceTargetRows) {
+  const exerciseIds = [...new Set(sourceTargetRows.map(r => r.exercise_id))]
+  if (!exerciseIds.length) return
+
+  const { data: sharedSde, error } = await supabase
+    .from('split_day_exercises')
+    .select('split_day_id, exercise_id, set_type, target_sets, target_reps_min, target_reps_max, split_days!inner(id, user_id, current_week)')
+    .in('exercise_id', exerciseIds)
+    .eq('split_days.user_id', userId)
+    .neq('split_day_id', sourceSplitDayId)
+
+  if (error || !sharedSde?.length) return
+
+  const weightByExercise = Object.fromEntries(
+    sourceTargetRows.map(r => [r.exercise_id, r.target_weight])
+  )
+
+  const mirrorRows = sharedSde.map(s => ({
+    user_id: userId,
+    exercise_id: s.exercise_id,
+    split_day_id: s.split_day_id,
+    week_number: s.split_days.current_week,
+    mesocycle: 1,
+    target_weight: weightByExercise[s.exercise_id],
+    target_sets: s.target_sets,
+    target_reps_min: s.target_reps_min,
+    target_reps_max: s.target_reps_max,
+    target_rir: 2,
+    set_type: s.set_type,
+    source: 'mirror',
+  }))
+
+  const { error: mErr } = await supabase
+    .from('progression_targets')
+    .upsert(mirrorRows, {
+      onConflict: 'user_id,exercise_id,split_day_id,week_number,mesocycle',
+    })
+  if (mErr) console.warn('[mirrorWeightsToSharedDays]', mErr)
 }
 
 const DAY_ORDER = { push_a: 1, push_b: 2, pull_a: 3, pull_b: 4, day_5: 5, tennis_prep: 6 }
@@ -219,6 +269,8 @@ export async function saveProgramToSupabase(userId, program, progress) {
           onConflict: 'user_id,exercise_id,split_day_id,week_number,mesocycle',
         })
       if (tErr) throw new Error(`progression_targets upsert failed (${dayKey}): ${tErr.message}`)
+
+      await mirrorWeightsToSharedDays(userId, dayRow.id, targetRows)
     }
   }
 }

@@ -695,8 +695,21 @@ function EditScreen({ split, onSave, onBack }) {
     setDraft(prev => {
       const next = JSON.parse(JSON.stringify(prev))
       const numFields = ['sets', 'min', 'max', 'w']
-      if (numFields.includes(field)) next[dayKey].exercises[idx][field] = value === '' ? null : Number(value)
-      else next[dayKey].exercises[idx][field] = value
+      const ex = next[dayKey].exercises[idx]
+      const newValue = numFields.includes(field) ? (value === '' ? null : Number(value)) : value
+      ex[field] = newValue
+
+      // Shared exercises (same _exercise_id across multiple days) share weight.
+      // Editing 'w' on one day mirrors the new weight to every other day's instance
+      // so SAVE persists consistent values.
+      if (field === 'w' && ex._exercise_id) {
+        for (const otherKey of Object.keys(next)) {
+          if (otherKey === dayKey) continue
+          for (const otherEx of next[otherKey].exercises) {
+            if (otherEx._exercise_id === ex._exercise_id) otherEx.w = newValue
+          }
+        }
+      }
       return next
     })
   }
