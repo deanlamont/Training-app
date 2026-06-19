@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+.vite/
+
+# Local env (NEVER commit — contains Supabase keys)
+.env
+.env.*.local
+.env.local
+
+# macOS metadata
+.DS_Store
+
+# Editor / tool config
+.claude/
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Misc
+coverage/
