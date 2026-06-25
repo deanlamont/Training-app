@@ -8,6 +8,8 @@ import {
 } from './utils/loadProgramFromSupabase'
 import { seedUserData } from './utils/seedUserData'
 import SignIn from './components/SignIn'
+import Logo from './components/Logo'
+import { C } from './theme'
 import {
   createSessionRow,
   writeExerciseSets,
@@ -60,15 +62,6 @@ function writeHomeWorkout(state) {
   try { localStorage.setItem(HOME_WORKOUT_KEY, JSON.stringify(state)) } catch {}
 }
 
-// ─── Theme ───────────────────────────────────────────────────────────────────
-const C = {
-  bg: '#F5F0E8', surface: '#FFFFFF', border: '#D8D3C8',
-  text: '#1A1A1A', sub: '#555555', muted: '#999999',
-  acc: '#2D6A4F', accLight: '#EAF3DE',
-  blue: '#185FA5', orange: '#854F0B', red: '#B04040',
-  innerBg: '#F9F6F1',
-}
-
 // ─── Mobility routine (15-min pre-bed wind-down) ────────────────────────────
 // Targets: tight hips / lower back / hamstrings, weak core, AND disc-golf coil
 // (thoracic rotation + hip-shoulder separation). The 🥏 moves directly train coil.
@@ -103,7 +96,7 @@ function SyncPill() {
     bg = '#FFF8E1'; fg = C.orange
     text = `Syncing ${s.queued + s.inFlight}…`
   } else {
-    bg = '#EAF3DE'; fg = C.acc
+    bg = C.accLight; fg = C.acc
     text = 'Synced'
   }
 
@@ -182,9 +175,11 @@ function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSessio
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '36px 20px 40px', background: C.bg }}>
       <div style={{ marginBottom: 32 }}>
-        <div style={{ fontSize: 15, color: C.acc, letterSpacing: 4, marginBottom: 8, fontWeight: 'bold' }}>SWOLEBRO TRAINING</div>
-        <div style={{ fontSize: 28, fontWeight: 700, color: C.text, lineHeight: 1.2 }}>Lake Bod 2026</div>
-        <div style={{ fontSize: 14, color: C.sub, marginTop: 4 }}>Mesocycle {MESO} · RP Method</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
+          <Logo size={40} />
+          <div style={{ fontSize: 24, fontWeight: 700, color: C.acc, letterSpacing: -0.5 }}>SwoleBro</div>
+        </div>
+        <div style={{ fontSize: 14, color: C.sub }}>Mesocycle {MESO} · RP Method</div>
         {userEmail && (
           <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>
             {userEmail} ·{' '}
@@ -643,7 +638,7 @@ function ResultsScreen({ day, result, currentCycle, onDone, onBack }) {
       </div>
       <div style={{ fontSize: 36, fontWeight: 800, lineHeight: 1, marginBottom: 6, color: C.text }}>{day.label}</div>
       {result?.session_summary && (
-        <div style={{ background: C.accLight, border: `0.5px solid #9EC4A8`, borderRadius: 12, padding: '14px 18px', margin: '18px 0 24px' }}>
+        <div style={{ background: C.accLight, border: `0.5px solid #B9CBD9`, borderRadius: 12, padding: '14px 18px', margin: '18px 0 24px' }}>
           <div style={{ fontSize: 13, color: C.acc, letterSpacing: 1, marginBottom: 6, fontWeight: 'bold' }}>SESSION SUMMARY</div>
           <div style={{ fontSize: 15, color: C.text, lineHeight: 1.6 }}>{result.session_summary}</div>
         </div>
@@ -814,7 +809,7 @@ function EditScreen({ split, onSave, onBack }) {
                             <button onClick={() => moveExercise(day.key, i, 1)} disabled={i === day.exercises.length - 1}
                               style={{ flex: 1, padding: '8px 0', background: C.bg, border: `0.5px solid ${C.border}`, borderRadius: 8, color: i === day.exercises.length - 1 ? C.border : C.sub, fontSize: 13, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>DOWN</button>
                             <button onClick={() => removeExercise(day.key, i)}
-                              style={{ flex: 1, padding: '8px 0', background: '#FFF0F0', border: '0.5px solid #FFCCCC', borderRadius: 8, color: '#CC3333', fontSize: 13, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>DELETE</button>
+                              style={{ flex: 1, padding: '8px 0', background: '#FBEAEA', border: `0.5px solid #E3B9BB`, borderRadius: 8, color: C.red, fontSize: 13, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>DELETE</button>
                           </div>
                           <button onClick={() => setEditingIdx(null)}
                             style={{ padding: '8px 0', background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 8, color: C.sub, fontSize: 14, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>DONE</button>

@@ -1,11 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../utils/supabaseClient'
-
-const C = {
-  bg: '#F5F0E8', surface: '#FFFFFF', border: '#D8D3C8',
-  text: '#1A1A1A', sub: '#555555', muted: '#999999',
-  acc: '#2D6A4F', red: '#B04040',
-}
+import Logo from './Logo'
+import { C } from '../theme'
 
 export default function SignIn() {
   const [email, setEmail] = useState('')
@@ -47,7 +43,10 @@ export default function SignIn() {
     <div style={{ maxWidth: 480, margin: '0 auto', height: '100dvh', background: C.bg, display: 'flex', flexDirection: 'column', color: C.text, fontFamily: '-apple-system, Arial, sans-serif' }}>
       <div style={{ flex: 1, overflowY: 'auto', padding: '60px 24px 40px' }}>
         <div style={{ marginBottom: 36 }}>
-          <div style={{ fontSize: 15, color: C.acc, letterSpacing: 4, marginBottom: 8, fontWeight: 'bold' }}>SWOLEBRO TRAINING</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+            <Logo size={48} />
+            <div style={{ fontSize: 26, fontWeight: 700, color: C.acc, letterSpacing: -0.5 }}>SwoleBro</div>
+          </div>
           <div style={{ fontSize: 28, fontWeight: 700, color: C.text, lineHeight: 1.2 }}>Sign in</div>
           <div style={{ fontSize: 14, color: C.sub, marginTop: 4 }}>
             First time? Just enter an email and password — your account is created on the spot.
