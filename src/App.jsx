@@ -87,13 +87,13 @@ function SyncPill() {
 
   let bg, fg, text
   if (s.failed > 0) {
-    bg = '#FBE9E7'; fg = C.red
+    bg = C.failBg; fg = C.red
     text = `${s.failed} failed — tap to dismiss`
   } else if (!s.online) {
-    bg = '#FFF3E0'; fg = C.orange
+    bg = C.warnBg; fg = C.orange
     text = s.queued > 0 ? `Offline · ${s.queued} pending` : 'Offline'
   } else if (s.queued > 0 || s.inFlight > 0) {
-    bg = '#FFF8E1'; fg = C.orange
+    bg = C.syncingBg; fg = C.orange
     text = `Syncing ${s.queued + s.inFlight}…`
   } else {
     bg = C.accLight; fg = C.acc
@@ -638,7 +638,7 @@ function ResultsScreen({ day, result, currentCycle, onDone, onBack }) {
       </div>
       <div style={{ fontSize: 36, fontWeight: 800, lineHeight: 1, marginBottom: 6, color: C.text }}>{day.label}</div>
       {result?.session_summary && (
-        <div style={{ background: C.accLight, border: `0.5px solid #B9CBD9`, borderRadius: 12, padding: '14px 18px', margin: '18px 0 24px' }}>
+        <div style={{ background: C.accLight, border: `0.5px solid ${C.summaryBorder}`, borderRadius: 12, padding: '14px 18px', margin: '18px 0 24px' }}>
           <div style={{ fontSize: 13, color: C.acc, letterSpacing: 1, marginBottom: 6, fontWeight: 'bold' }}>SESSION SUMMARY</div>
           <div style={{ fontSize: 15, color: C.text, lineHeight: 1.6 }}>{result.session_summary}</div>
         </div>
@@ -809,7 +809,7 @@ function EditScreen({ split, onSave, onBack }) {
                             <button onClick={() => moveExercise(day.key, i, 1)} disabled={i === day.exercises.length - 1}
                               style={{ flex: 1, padding: '8px 0', background: C.bg, border: `0.5px solid ${C.border}`, borderRadius: 8, color: i === day.exercises.length - 1 ? C.border : C.sub, fontSize: 13, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>DOWN</button>
                             <button onClick={() => removeExercise(day.key, i)}
-                              style={{ flex: 1, padding: '8px 0', background: '#FBEAEA', border: `0.5px solid #E3B9BB`, borderRadius: 8, color: C.red, fontSize: 13, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>DELETE</button>
+                              style={{ flex: 1, padding: '8px 0', background: C.deleteBg, border: `0.5px solid ${C.deleteBorder}`, borderRadius: 8, color: C.red, fontSize: 13, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>DELETE</button>
                           </div>
                           <button onClick={() => setEditingIdx(null)}
                             style={{ padding: '8px 0', background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 8, color: C.sub, fontSize: 14, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>DONE</button>

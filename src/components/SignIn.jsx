@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { supabase } from '../utils/supabaseClient'
-import Logo from './Logo'
 import { C } from '../theme'
 
 export default function SignIn() {
@@ -43,10 +42,11 @@ export default function SignIn() {
     <div style={{ maxWidth: 480, margin: '0 auto', height: '100dvh', background: C.bg, display: 'flex', flexDirection: 'column', color: C.text, fontFamily: '-apple-system, Arial, sans-serif' }}>
       <div style={{ flex: 1, overflowY: 'auto', padding: '60px 24px 40px' }}>
         <div style={{ marginBottom: 36 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-            <Logo size={48} />
-            <div style={{ fontSize: 26, fontWeight: 700, color: C.acc, letterSpacing: -0.5 }}>SwoleBro</div>
-          </div>
+          <img
+            src="/brand/swolebro-lockup-transparent.png"
+            alt="SwoleBro"
+            style={{ width: 180, display: 'block', margin: '0 auto 16px' }}
+          />
           <div style={{ fontSize: 28, fontWeight: 700, color: C.text, lineHeight: 1.2 }}>Sign in</div>
           <div style={{ fontSize: 14, color: C.sub, marginTop: 4 }}>
             First time? Just enter an email and password — your account is created on the spot.
@@ -78,7 +78,7 @@ export default function SignIn() {
         </form>
 
         {error && (
-          <div style={{ marginTop: 20, padding: '12px 14px', background: '#FBE9E7', border: `1px solid ${C.red}`, borderRadius: 10, color: C.red, fontSize: 14 }}>
+          <div style={{ marginTop: 20, padding: '12px 14px', background: C.failBg, border: `1px solid ${C.red}`, borderRadius: 10, color: C.red, fontSize: 14 }}>
             {error}
           </div>
         )}
