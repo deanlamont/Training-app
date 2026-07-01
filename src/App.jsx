@@ -234,12 +234,12 @@ function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSessio
           const cycle = progress[d.key]?.week ?? 3
           return (
             <button key={d.key} onClick={() => onStart(d.key)}
-              style={{ background: C.surface, border: `0.5px solid ${C.border}`, borderRadius: 14, padding: '20px 16px', textAlign: 'left', cursor: 'pointer', color: C.text, fontFamily: 'inherit' }}>
-              <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 4, color: C.text }}>{d.label}</div>
+              style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: '20px 16px', textAlign: 'left', cursor: 'pointer', color: C.text, fontFamily: 'inherit' }}>
+              <div style={{ fontSize: 23, fontWeight: 800, marginBottom: 4, color: C.text }}>{d.label}</div>
               <div style={{ fontSize: 15, color: C.sub }}>{d.sub}</div>
-              <div style={{ marginTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ fontSize: 15, color: C.muted, fontWeight: 'bold', letterSpacing: 1 }}>{d.exercises.length} EX</div>
-                <div style={{ fontSize: 15, color: C.acc, fontWeight: 'bold', letterSpacing: 1 }}>CYCLE {cycle}</div>
+              <div style={{ marginTop: 14, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 12, color: C.sub, fontWeight: 800, letterSpacing: 0.5, background: C.innerBg, padding: '5px 10px', borderRadius: 999 }}>{d.exercises.length} EX</div>
+                <div style={{ fontSize: 12, color: C.acc, fontWeight: 800, letterSpacing: 0.5, background: C.accLight, padding: '5px 10px', borderRadius: 999 }}>CYCLE {cycle}</div>
               </div>
             </button>
           )
@@ -360,15 +360,15 @@ function Stepper({ value, onChange, step = 1, min = 0, max = 9999, label }) {
   }
   return (
     <div style={{ flex: 1 }}>
-      <div style={{ fontSize: 12, color: C.muted, letterSpacing: 1, marginBottom: 4, fontWeight: 'bold' }}>{label}</div>
-      <div style={{ display: 'flex', alignItems: 'stretch', background: C.innerBg, border: `0.5px solid ${C.border}`, borderRadius: 10, overflow: 'hidden' }}>
+      <div style={{ fontSize: 13, color: C.sub, letterSpacing: 1.5, marginBottom: 6, fontWeight: 700 }}>{label}</div>
+      <div style={{ display: 'flex', alignItems: 'stretch', background: C.innerBg, border: `1px solid ${C.border}`, borderRadius: 16, overflow: 'hidden', height: 64 }}>
         <button onClick={() => bump(-1)} aria-label="decrement"
-          style={{ width: 40, background: 'none', border: 'none', color: C.sub, fontSize: 22, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>−</button>
+          style={{ width: 56, flexShrink: 0, background: 'none', border: 'none', color: C.sub, fontSize: 28, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>−</button>
         <input type="number" inputMode="decimal" value={value ?? ''}
           onChange={e => onChange(e.target.value === '' ? null : Number(e.target.value))}
-          style={{ flex: 1, background: 'none', border: 'none', color: C.text, fontSize: 20, fontWeight: 700, textAlign: 'center', fontFamily: 'inherit', outline: 'none', minWidth: 0, width: '100%' }} />
+          style={{ flex: 1, background: 'none', border: 'none', color: C.text, fontSize: 32, fontWeight: 800, textAlign: 'center', fontFamily: 'monospace', outline: 'none', minWidth: 0, width: '100%' }} />
         <button onClick={() => bump(1)} aria-label="increment"
-          style={{ width: 40, background: 'none', border: 'none', color: C.sub, fontSize: 22, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>+</button>
+          style={{ width: 56, flexShrink: 0, background: 'none', border: 'none', color: C.sub, fontSize: 28, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>+</button>
       </div>
     </div>
   )
@@ -415,28 +415,36 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
 
   // Collapsed view
   if (!expanded) {
+    const repsStr = ex.max !== ex.min ? `${ex.min}-${ex.max}` : ex.min
     return (
       <button onClick={onExpand}
-        style={{ width: '100%', textAlign: 'left', background: hasAnyLogs ? C.innerBg : C.surface, border: `0.5px solid ${C.border}`, borderLeft: `3px solid ${hasAnyLogs ? C.acc : skipped ? C.muted : C.border}`, borderRadius: 12, padding: '14px 16px', marginBottom: 8, cursor: 'pointer', fontFamily: 'inherit', color: C.text }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        style={{ width: '100%', textAlign: 'left', background: hasAnyLogs ? C.innerBg : C.surface, border: `1px solid ${C.border}`, borderLeft: `4px solid ${hasAnyLogs ? C.acc : skipped ? C.muted : C.border}`, borderRadius: 14, padding: '16px', marginBottom: 10, cursor: 'pointer', fontFamily: 'inherit', color: C.text }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 16, fontWeight: 600, color: C.text }}>{ex.name}</div>
-            <div style={{ fontSize: 14, color: C.sub, marginTop: 2 }}>{targetStr(ex)}</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: C.text }}>{ex.name}</div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginTop: 5, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 21, fontWeight: 800, color: C.text, fontFamily: 'monospace' }}>
+                {fmt(ex.w)}<span style={{ fontSize: 13, fontWeight: 700, color: C.sub }}> lb</span>
+              </span>
+              <span style={{ fontSize: 15, color: C.muted }}>·</span>
+              <span style={{ fontSize: 16, fontWeight: 700, color: C.sub }}>{ex.sets ?? '?'}×{repsStr}</span>
+              {ex.note && <span style={{ fontSize: 13, color: C.muted }}>{ex.note}</span>}
+            </div>
             {lastSummary && (
-              <div style={{ fontSize: 13, color: C.muted, marginTop: 3, fontFamily: 'monospace' }}>
+              <div style={{ fontSize: 13, color: C.muted, marginTop: 5, fontFamily: 'monospace' }}>
                 Last: {lastSummary}
               </div>
             )}
           </div>
           <div style={{ textAlign: 'right', flexShrink: 0 }}>
             {hasAnyLogs ? (
-              <div style={{ fontSize: 15, color: C.acc, fontWeight: 700 }}>
-                ✓ {workSets.length} {workSets.length === 1 ? 'set' : 'sets'}
+              <div style={{ fontSize: 14, color: '#fff', fontWeight: 800, background: C.acc, padding: '7px 12px', borderRadius: 999, whiteSpace: 'nowrap' }}>
+                ✓ {workSets.length}/{targetSetCount || workSets.length}
               </div>
             ) : skipped ? (
-              <div style={{ fontSize: 14, color: C.muted, fontWeight: 700, letterSpacing: 1 }}>SKIPPED</div>
+              <div style={{ fontSize: 13, color: C.muted, fontWeight: 700, letterSpacing: 1 }}>SKIPPED</div>
             ) : (
-              <div style={{ fontSize: 14, color: C.blue, fontWeight: 700, letterSpacing: 1 }}>SETS</div>
+              <div style={{ fontSize: 13, color: C.blue, fontWeight: 800, letterSpacing: 1, border: `1px solid ${C.blue}`, padding: '7px 12px', borderRadius: 999 }}>SETS</div>
             )}
           </div>
         </div>
@@ -446,34 +454,38 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
 
   // Expanded view
   return (
-    <div style={{ background: C.surface, border: `0.5px solid ${C.acc}`, borderLeft: `3px solid ${C.acc}`, borderRadius: 12, padding: 16, marginBottom: 8 }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
+    <div style={{ background: C.surface, border: `1px solid ${C.acc}`, borderLeft: `4px solid ${C.acc}`, borderRadius: 16, padding: 18, marginBottom: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 18, fontWeight: 700, color: C.text }}>{ex.name}</div>
-          <div style={{ fontSize: 14, color: C.sub, marginTop: 2 }}>Target: {targetStr(ex)}</div>
+          <div style={{ fontSize: 19, fontWeight: 800, color: C.text }}>{ex.name}</div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 5, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, color: C.sub, letterSpacing: 0.5 }}>TARGET</span>
+            <span style={{ fontSize: 19, fontWeight: 800, color: C.acc, fontFamily: 'monospace' }}>{fmt(ex.w)}lb</span>
+            <span style={{ fontSize: 15, color: C.sub }}>× {ex.sets ?? '?'} × {ex.max !== ex.min ? `${ex.min}-${ex.max}` : ex.min}{ex.note ?? ''}</span>
+          </div>
           {lastSummary && (
-            <div style={{ fontSize: 13, color: C.muted, marginTop: 3, fontFamily: 'monospace' }}>
+            <div style={{ fontSize: 13, color: C.muted, marginTop: 5, fontFamily: 'monospace' }}>
               Last: {lastSummary}
             </div>
           )}
         </div>
         <button onClick={onExpand} aria-label="collapse"
-          style={{ background: 'none', border: 'none', color: C.muted, fontSize: 22, cursor: 'pointer', padding: '0 4px' }}>×</button>
+          style={{ background: 'none', border: 'none', color: C.muted, fontSize: 26, cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}>×</button>
       </div>
 
       {/* Logged sets */}
       {workSets.length > 0 && (
-        <div style={{ marginBottom: 14 }}>
+        <div style={{ marginBottom: 16 }}>
           {workSets.map((s, i) => {
-            const label = `Set ${s.num ?? i + 1}`
+            const label = `SET ${s.num ?? i + 1}`
             return (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '10px 12px', background: C.innerBg, borderRadius: 8, marginBottom: 4 }}>
-                <div style={{ flex: 1, fontSize: 14, color: C.sub, fontWeight: 600 }}>{label}</div>
-                <div style={{ fontSize: 15, color: C.text, fontWeight: 700, fontFamily: 'monospace', marginRight: 10 }}>
-                  {fmt(s.w)}lb × {s.reps}
+              <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '12px 14px', background: C.innerBg, borderRadius: 12, marginBottom: 6 }}>
+                <div style={{ flex: 1, fontSize: 13, color: C.muted, fontWeight: 700, letterSpacing: 1 }}>{label}</div>
+                <div style={{ fontSize: 21, color: C.text, fontWeight: 800, fontFamily: 'monospace', marginRight: 12 }}>
+                  {fmt(s.w)}<span style={{ fontSize: 14, color: C.sub, fontWeight: 700 }}>lb</span> × {s.reps}
                 </div>
                 <button onClick={() => onDeleteSet(i)} aria-label="delete set"
-                  style={{ background: 'none', border: 'none', color: C.red, fontSize: 14, fontWeight: 700, cursor: 'pointer', padding: '4px 8px', fontFamily: 'inherit' }}>
+                  style={{ background: 'none', border: 'none', color: C.red, fontSize: 14, fontWeight: 700, cursor: 'pointer', padding: '8px', fontFamily: 'inherit' }}>
                   DEL
                 </button>
               </div>
@@ -484,7 +496,7 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
 
       {/* Athlean-X final-set coaching: always show failure cue; intensifier if any. */}
       {isFinalSet && (
-        <div style={{ fontSize: 13, color: C.orange, lineHeight: 1.4, marginBottom: 10, padding: '8px 10px', background: C.innerBg, borderRadius: 8, borderLeft: `3px solid ${C.orange}` }}>
+        <div style={{ fontSize: 14, color: C.orange, lineHeight: 1.4, marginBottom: 12, padding: '10px 12px', background: C.innerBg, borderRadius: 10, borderLeft: `3px solid ${C.orange}` }}>
           <div><span style={{ fontWeight: 700, letterSpacing: 1, marginRight: 6 }}>FINAL SET:</span>take to technique failure</div>
           {ex.intensifier && (
             <div style={{ marginTop: 2 }}>↳ {ex.intensifier}</div>
@@ -493,19 +505,19 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
       )}
 
       {/* Entry form */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
         <Stepper value={weight} onChange={setWeight} step={step} label="WEIGHT (lb)" />
         <Stepper value={reps} onChange={setReps} step={1} min={0} max={50} label="REPS" />
       </div>
 
       <button onClick={doLogSet}
-        style={{ width: '100%', padding: 16, background: C.acc, border: 'none', borderRadius: 12, color: '#fff', fontSize: 17, fontWeight: 800, letterSpacing: 1, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 10 }}>
+        style={{ width: '100%', padding: 18, background: C.acc, border: 'none', borderRadius: 14, color: '#fff', fontSize: 18, fontWeight: 800, letterSpacing: 1, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 10 }}>
         LOG SET
       </button>
 
       {!hasAnyLogs && !skipped && (
         <button onClick={onSkip}
-          style={{ width: '100%', padding: 10, background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 10, color: C.muted, fontSize: 13, fontWeight: 700, letterSpacing: 1, cursor: 'pointer', fontFamily: 'inherit' }}>
+          style={{ width: '100%', padding: 12, background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 10, color: C.muted, fontSize: 13, fontWeight: 700, letterSpacing: 1, cursor: 'pointer', fontFamily: 'inherit' }}>
           SKIP THIS EXERCISE
         </button>
       )}
@@ -583,16 +595,21 @@ function SessionScreen({
       )}
 
       {/* Header */}
-      <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', padding: '14px 18px', borderBottom: `0.5px solid ${C.border}`, gap: 12, background: C.surface }}>
-        <button onClick={onBack} aria-label="back"
-          style={{ background: 'none', border: 'none', color: C.sub, fontSize: 28, cursor: 'pointer', padding: '4px 8px', lineHeight: 1 }}>←</button>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 20, fontWeight: 700, color: C.text, lineHeight: 1.1 }}>{day.label}</div>
-          <div style={{ fontSize: 14, color: C.sub, marginTop: 2 }}>{day.sub} · Cycle {currentCycle}</div>
+      <div style={{ flexShrink: 0, background: C.surface, borderBottom: `0.5px solid ${C.border}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', padding: '14px 18px 12px', gap: 12 }}>
+          <button onClick={onBack} aria-label="back"
+            style={{ background: 'none', border: 'none', color: C.sub, fontSize: 28, cursor: 'pointer', padding: '4px 8px', lineHeight: 1 }}>←</button>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 21, fontWeight: 800, color: C.text, lineHeight: 1.1 }}>{day.label}</div>
+            <div style={{ fontSize: 14, color: C.sub, marginTop: 2 }}>{day.sub} · Cycle {currentCycle}</div>
+          </div>
+          <button onClick={() => setShowPeek(true)}
+            style={{ background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 8, color: C.muted, fontSize: 13, fontWeight: 'bold', letterSpacing: 1, padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit', marginRight: 4 }}>DAYS</button>
+          <div style={{ fontSize: 16, color: C.text, fontFamily: 'monospace', fontWeight: 800 }}>{loggedCount}/{sessionExercises.length}</div>
         </div>
-        <button onClick={() => setShowPeek(true)}
-          style={{ background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 8, color: C.muted, fontSize: 13, fontWeight: 'bold', letterSpacing: 1, padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit', marginRight: 4 }}>DAYS</button>
-        <div style={{ fontSize: 15, color: C.muted, fontFamily: 'monospace', fontWeight: 'bold' }}>{loggedCount}/{sessionExercises.length}</div>
+        <div style={{ height: 5, background: C.border, margin: '0 18px 12px', borderRadius: 3, overflow: 'hidden' }}>
+          <div style={{ height: '100%', background: C.acc, width: `${sessionExercises.length ? Math.round((loggedCount / sessionExercises.length) * 100) : 0}%`, transition: 'width 0.2s', borderRadius: 3 }} />
+        </div>
       </div>
 
       {/* Athlean coaching strip — always visible reminder of the rules */}
@@ -648,16 +665,16 @@ function ResultsScreen({ day, result, currentCycle, onDone, onBack }) {
           const color = t.status === 'up' ? C.acc : t.status === 'deload' ? C.red : t.status === 'skipped' ? C.muted : C.sub
           const arrow = t.status === 'up' ? '↑' : t.status === 'deload' ? '↓' : t.status === 'skipped' ? '—' : '='
           return (
-            <div key={i} style={{ borderBottom: `0.5px solid ${C.border}`, padding: '14px 0', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+            <div key={i} style={{ borderBottom: `0.5px solid ${C.border}`, padding: '16px 0', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 16, fontWeight: 600, color: C.text }}>{t.exercise_name}</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{t.exercise_name}</div>
                 {t.note && <div style={{ fontSize: 13, color, marginTop: 3, whiteSpace: 'pre-line', lineHeight: 1.5 }}>↳ {t.note}</div>}
               </div>
               <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                <div style={{ fontSize: 20, color, fontWeight: 800, fontFamily: 'monospace' }}>
+                <div style={{ fontSize: 24, color, fontWeight: 800, fontFamily: 'monospace' }}>
                   {fmt(t.target_weight)}lb {arrow}
                 </div>
-                <div style={{ fontSize: 13, color: C.sub, marginTop: 2 }}>
+                <div style={{ fontSize: 14, color: C.sub, marginTop: 2 }}>
                   {t.target_sets ? t.target_sets + '×' : ''}
                   {t.target_reps_min}{t.target_reps_max !== t.target_reps_min ? '-' + t.target_reps_max : ''}
                 </div>
@@ -735,7 +752,7 @@ function EditScreen({ split, onSave, onBack }) {
     setEditingIdx(null)
   }
 
-  const inputStyle = { background: C.innerBg, border: `0.5px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 15, padding: '8px 10px', width: '100%', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }
+  const inputStyle = { background: C.innerBg, border: `1px solid ${C.border}`, borderRadius: 10, color: C.text, fontSize: 16, padding: '10px 12px', width: '100%', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: C.bg }}>
@@ -763,10 +780,10 @@ function EditScreen({ split, onSave, onBack }) {
                       {!isEditing ? (
                         <div onClick={() => setEditingIdx(`${day.key}-${i}`)} style={{ cursor: 'pointer' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div style={{ fontSize: 15, fontWeight: 600, color: C.text }}>{ex.name}</div>
+                            <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{ex.name}</div>
                             <div style={{ fontSize: 13, color: C.blue, fontWeight: 'bold', letterSpacing: 1 }}>SETS</div>
                           </div>
-                          <div style={{ fontSize: 14, color: C.muted, marginTop: 3 }}>{targetStr(ex)}</div>
+                          <div style={{ fontSize: 15, color: C.sub, marginTop: 3 }}>{targetStr(ex)}</div>
                           {ex.intensifier && (
                             <div style={{ fontSize: 13, color: C.orange, marginTop: 3 }}>↳ {ex.intensifier}</div>
                           )}
@@ -774,33 +791,33 @@ function EditScreen({ split, onSave, onBack }) {
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                           <div>
-                            <div style={{ fontSize: 12, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>NAME</div>
+                            <div style={{ fontSize: 13, color: C.sub, marginBottom: 5, letterSpacing: 1, fontWeight: 700 }}>NAME</div>
                             <input value={ex.name} onChange={e => updateExercise(day.key, i, 'name', e.target.value)} style={inputStyle} />
                           </div>
                           <div>
-                            <div style={{ fontSize: 12, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>WEIGHT</div>
+                            <div style={{ fontSize: 13, color: C.sub, marginBottom: 5, letterSpacing: 1, fontWeight: 700 }}>WEIGHT</div>
                             <input type="number" value={ex.w ?? ''} placeholder="TBD" onChange={e => updateExercise(day.key, i, 'w', e.target.value)} style={inputStyle} />
                           </div>
                           <div style={{ display: 'flex', gap: 10 }}>
                               <div style={{ flex: 1 }}>
-                                <div style={{ fontSize: 12, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>SETS</div>
+                                <div style={{ fontSize: 13, color: C.sub, marginBottom: 5, letterSpacing: 1, fontWeight: 700 }}>SETS</div>
                                 <input type="number" value={ex.sets ?? ''} onChange={e => updateExercise(day.key, i, 'sets', e.target.value)} style={inputStyle} />
                               </div>
                               <div style={{ flex: 1 }}>
-                                <div style={{ fontSize: 12, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>MIN</div>
+                                <div style={{ fontSize: 13, color: C.sub, marginBottom: 5, letterSpacing: 1, fontWeight: 700 }}>MIN</div>
                                 <input type="number" value={ex.min ?? ''} onChange={e => updateExercise(day.key, i, 'min', e.target.value)} style={inputStyle} />
                               </div>
                               <div style={{ flex: 1 }}>
-                                <div style={{ fontSize: 12, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>MAX</div>
+                                <div style={{ fontSize: 13, color: C.sub, marginBottom: 5, letterSpacing: 1, fontWeight: 700 }}>MAX</div>
                                 <input type="number" value={ex.max ?? ''} onChange={e => updateExercise(day.key, i, 'max', e.target.value)} style={inputStyle} />
                               </div>
                             </div>
                           <div>
-                            <div style={{ fontSize: 12, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>NOTE</div>
+                            <div style={{ fontSize: 13, color: C.sub, marginBottom: 5, letterSpacing: 1, fontWeight: 700 }}>NOTE</div>
                             <textarea value={ex.note || ''} placeholder="e.g. /side" rows={4} onChange={e => updateExercise(day.key, i, 'note', e.target.value || undefined)} style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
                           </div>
                           <div>
-                            <div style={{ fontSize: 12, color: C.muted, marginBottom: 4, letterSpacing: 1 }}>INTENSIFIER (FINAL SET)</div>
+                            <div style={{ fontSize: 13, color: C.sub, marginBottom: 5, letterSpacing: 1, fontWeight: 700 }}>INTENSIFIER (FINAL SET)</div>
                             <input value={ex.intensifier || ''} placeholder="e.g. Slow 3s eccentric + peak squeeze" onChange={e => updateExercise(day.key, i, 'intensifier', e.target.value || undefined)} style={inputStyle} />
                           </div>
                           <div style={{ display: 'flex', gap: 8 }}>
@@ -867,7 +884,7 @@ function ReferenceScreen({ day, onBack }) {
         <div key={i} style={{ background: C.surface, border: `0.5px solid ${C.border}`, borderRadius: 12, padding: '16px 18px', marginBottom: 12 }}>
           <div style={{ fontSize: 18, fontWeight: 700, color: C.text, marginBottom: 10 }}>{ex.name}</div>
           {ex.note && (
-            <div style={{ fontSize: 14, color: C.sub, lineHeight: 1.6, whiteSpace: 'pre-line' }}>
+            <div style={{ fontSize: 15, color: C.sub, lineHeight: 1.6, whiteSpace: 'pre-line' }}>
               {linkifyNote(ex.note)}
             </div>
           )}
@@ -954,12 +971,12 @@ function MobilityScreen({ onBack }) {
                     <div style={{ fontSize: 10, color: C.orange, letterSpacing: 1, fontWeight: 'bold', border: `0.5px solid ${C.orange}`, padding: '2px 6px', borderRadius: 4 }}>COIL</div>
                   )}
                 </div>
-                <div style={{ fontSize: 14, color: C.sub, marginTop: 4, lineHeight: 1.4 }}>{move.description}</div>
+                <div style={{ fontSize: 15, color: C.sub, marginTop: 4, lineHeight: 1.4 }}>{move.description}</div>
               </div>
               <div style={{ flexShrink: 0, textAlign: 'right' }}>
-                <div style={{ fontSize: 13, color: C.blue, fontWeight: 700, letterSpacing: 1 }}>~{fmtClock(move.duration)}</div>
+                <div style={{ fontSize: 14, color: C.blue, fontWeight: 700, letterSpacing: 1 }}>~{fmtClock(move.duration)}</div>
                 {move.perSide && (
-                  <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, letterSpacing: 1, marginTop: 2 }}>BOTH SIDES</div>
+                  <div style={{ fontSize: 12, color: C.muted, fontWeight: 700, letterSpacing: 1, marginTop: 2 }}>BOTH SIDES</div>
                 )}
                 <div style={{ fontSize: 20, fontWeight: 700, color: isDone ? C.acc : C.border, marginTop: 6 }}>
                   {isDone ? '✓' : '○'}
