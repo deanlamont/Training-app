@@ -19,6 +19,11 @@ function decideOne(ex, sets) {
 
   const increment = ex.increment ?? DEFAULT_INCREMENT
 
+  // Base weight: the programmed target, falling back to what was actually
+  // lifted — covers TBD exercises that have no target yet, which would
+  // otherwise progress from 0.
+  const baseW = ex.w ?? work[work.length - 1].w
+
   // Chipper: one total-rep target, chipped away in as few sets as possible.
   // Weight goes up once the full target fits in 3 or fewer sets.
   if (ex.type === 'chipper') {
@@ -26,13 +31,13 @@ function decideOne(ex, sets) {
     const total = work.reduce((a, s) => a + (s.reps || 0), 0)
     if (target > 0 && total >= target && work.length <= 3) {
       return {
-        nextWeight: (ex.w ?? 0) + increment,
+        nextWeight: baseW + increment,
         status: 'up',
         note: `chipped ${total} in ${work.length} sets → +${increment}lb`,
       }
     }
     return {
-      nextWeight: ex.w,
+      nextWeight: baseW,
       status: 'hold',
       note: `chip: ${total}/${target} in ${work.length} sets — get it under 4 sets to move up`,
     }
@@ -43,12 +48,12 @@ function decideOne(ex, sets) {
 
   if (hitMax) {
     return {
-      nextWeight: (ex.w ?? 0) + increment,
+      nextWeight: baseW + increment,
       status: 'up',
       note: `+${increment}lb`,
     }
   }
-  return { nextWeight: ex.w, status: 'hold', note: 'hold, push reps' }
+  return { nextWeight: baseW, status: 'hold', note: 'hold, push reps' }
 }
 
 /**

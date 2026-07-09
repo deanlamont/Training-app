@@ -483,12 +483,37 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
   const [weight, setWeight] = useState(defaultWeight)
   const [reps, setReps] = useState(defaultReps)
 
+  // Dice-roll state: the challenge stays hidden until the user taps ROLL.
+  // The outcome is predetermined (hash of session+exercise) — the spin is
+  // theater — so collapsing and re-rolling can't fish for a better draw.
+  const [rolled, setRolled] = useState(false)
+  const [rollFace, setRollFace] = useState(null)
+  const rolling = rollFace != null
+
+  function startRoll() {
+    if (rolled) return
+    setRolled(true)
+    const keys = Object.keys(CHALLENGES)
+    let i = Math.floor(Math.random() * keys.length)
+    const iv = setInterval(() => {
+      setRollFace(keys[i++ % keys.length])
+      if (navigator.vibrate) navigator.vibrate(8)
+    }, 90)
+    setTimeout(() => {
+      clearInterval(iv)
+      setRollFace(null)
+      if (navigator.vibrate) navigator.vibrate([40, 30, 90])
+    }, 950)
+  }
+
   // When entering expanded mode, reset to defaults
   useEffect(() => {
     if (expanded) {
       const last = workSets[workSets.length - 1]
       setWeight(last?.w ?? ex.w ?? 0)
       setReps(last?.reps ?? (isChipper ? 12 : Math.round(((ex.min ?? 8) + (ex.max ?? ex.min ?? 8)) / 2)))
+      setRolled(false)
+      setRollFace(null)
     }
   }, [expanded, ex.id])
 
@@ -646,19 +671,31 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
         </div>
       )}
 
-      {/* Final-set challenge card — random, optional. Log it or ignore it. */}
-      {challenge && !challengeResult && (
-        <div style={{ fontSize: 14, color: C.blue, lineHeight: 1.4, marginBottom: 12, padding: '10px 12px', background: C.innerBg, borderRadius: 10, border: `1px dashed ${C.blue}` }}>
-          <div><span style={{ fontWeight: 800, letterSpacing: 1, marginRight: 6 }}>🎲 CHALLENGE · {challenge.label}</span></div>
-          <div style={{ marginTop: 2, color: C.sub }}>{challenge.desc}</div>
-          {lastChallenge && (
-            <div style={{ marginTop: 4, fontFamily: 'monospace', fontWeight: 700 }}>
-              Last time: {fmt(lastChallenge.w)}lb × {lastChallenge.reps} — beat it
-            </div>
-          )}
-          <div style={{ marginTop: 4, fontSize: 12, color: C.muted }}>
-            optional — set weight/reps below, tap LOG CHALLENGE. Or just ignore it.
+      {/* Final-set challenge — hidden behind a dice roll. Log it or ignore it. */}
+      {challenge && !challengeResult && !rolled && (
+        <button onClick={startRoll}
+          style={{ width: '100%', padding: 14, background: C.innerBg, border: `1px dashed ${C.blue}`, borderRadius: 12, color: C.blue, fontSize: 15, fontWeight: 800, letterSpacing: 1, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 12 }}>
+          🎲 ROLL A CHALLENGE <span style={{ fontSize: 11, color: C.muted, fontWeight: 700 }}>(optional)</span>
+        </button>
+      )}
+      {challenge && !challengeResult && rolled && (
+        <div style={{ fontSize: 14, color: C.blue, lineHeight: 1.4, marginBottom: 12, padding: '10px 12px', background: C.innerBg, borderRadius: 10, border: `1px dashed ${C.blue}`, boxShadow: rolling ? `0 0 12px rgba(0,166,225,0.4)` : 'none' }}>
+          <div style={{ fontWeight: 800, letterSpacing: 1, fontSize: rolling ? 17 : 14 }}>
+            🎲 {rolling ? CHALLENGES[rollFace].label : `CHALLENGE · ${challenge.label}`}
           </div>
+          {!rolling && (
+            <>
+              <div style={{ marginTop: 2, color: C.sub }}>{challenge.desc}</div>
+              {lastChallenge && (
+                <div style={{ marginTop: 4, fontFamily: 'monospace', fontWeight: 700 }}>
+                  Last time: {fmt(lastChallenge.w)}lb × {lastChallenge.reps} — beat it
+                </div>
+              )}
+              <div style={{ marginTop: 4, fontSize: 12, color: C.muted }}>
+                set weight/reps below, tap LOG CHALLENGE — or skip it, no penalty
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -673,7 +710,7 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
         LOG SET
       </button>
 
-      {challenge && !challengeResult && (
+      {challenge && !challengeResult && rolled && !rolling && (
         <button onClick={doLogChallenge}
           style={{ width: '100%', padding: 14, background: 'none', border: `1px dashed ${C.blue}`, borderRadius: 12, color: C.blue, fontSize: 15, fontWeight: 800, letterSpacing: 1, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 10 }}>
           🎲 LOG CHALLENGE
@@ -1563,7 +1600,13 @@ export default function App() {
       const w = Number(log.weight)
       // Old myo_activation / myo_mini rows from pre-Athlean-X sessions collapse
       // into regular work sets on recovery — they're just historical data now.
-      logsByShortId[ex.id].push({ num: log.set_number || (logsByShortId[ex.id].length + 1), w, reps: log.reps, rir: log.rir })
+      // Challenge rows must keep their type or they'd corrupt progression.
+      const isChallenge = typeof log.set_type === 'string' && log.set_type.startsWith('challenge:')
+      logsByShortId[ex.id].push({
+        num: log.set_number || (logsByShortId[ex.id].length + 1),
+        w, reps: log.reps, rir: log.rir,
+        ...(isChallenge ? { type: 'challenge', challenge: log.set_type.slice('challenge:'.length) } : {}),
+      })
     }
 
     setDayKey(key)
