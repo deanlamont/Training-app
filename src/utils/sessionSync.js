@@ -41,7 +41,7 @@ export function writeExerciseSets({ sessionId, exerciseUuid, sets }) {
       session_id: sessionId,
       exercise_id: exerciseUuid,
       set_number: s.num ?? i + 1,
-      set_type: 'straight',
+      set_type: s.type === 'challenge' ? `challenge:${s.challenge ?? 'unknown'}` : 'straight',
       weight: s.w,
       reps: s.reps,
       rir: s.rir ?? null,
@@ -200,6 +200,66 @@ export async function fetchPreviousSessionForDay(userId, splitDayId, excludeSess
     return { sessionId: prev.id, setLogs: logs ?? [] }
   } catch (e) {
     console.error('[fetchPreviousSessionForDay] failed', e)
+    return null
+  }
+}
+
+/**
+ * Aggregates challenge results (set_logs with set_type 'challenge:*') into
+ * home-screen scoreboard stats. "Beat" = higher weight than the previous
+ * attempt of the same challenge on the same exercise, or same weight for
+ * more reps. Streak = consecutive completed sessions (newest first) with at
+ * least one challenge logged.
+ */
+export async function loadChallengeStats(userId) {
+  if (!supabase || !userId) return null
+  try {
+    const { data: logs } = await supabase
+      .from('set_logs')
+      .select('exercise_id, set_type, weight, reps, logged_at, session_id, sessions!inner(user_id)')
+      .like('set_type', 'challenge:%')
+      .eq('sessions.user_id', userId)
+      .order('logged_at', { ascending: true })
+
+    const { data: sess } = await supabase
+      .from('sessions')
+      .select('id, completed_at')
+      .eq('user_id', userId)
+      .not('completed_at', 'is', null)
+      .order('completed_at', { ascending: false })
+      .limit(30)
+
+    const challengeLogs = logs ?? []
+    const prevByKey = {}
+    const enriched = challengeLogs.map(l => {
+      const key = `${l.exercise_id}:${l.set_type}`
+      const prev = prevByKey[key]
+      prevByKey[key] = l
+      const w = Number(l.weight)
+      const beat = prev != null &&
+        (w > Number(prev.weight) || (w === Number(prev.weight) && l.reps > prev.reps))
+      return { ...l, beat }
+    })
+
+    const weekAgo = Date.now() - 7 * 864e5
+    const thisWeek = enriched.filter(l => new Date(l.logged_at).getTime() >= weekAgo)
+
+    const sessionsWithChallenge = new Set(challengeLogs.map(l => l.session_id))
+    let streak = 0
+    for (const s of sess ?? []) {
+      if (sessionsWithChallenge.has(s.id)) streak++
+      else break
+    }
+
+    return {
+      weekAttempted: thisWeek.length,
+      weekBeaten: thisWeek.filter(l => l.beat).length,
+      streak,
+      totalAttempted: enriched.length,
+      totalBeaten: enriched.filter(l => l.beat).length,
+    }
+  } catch (e) {
+    console.error('[loadChallengeStats]', e)
     return null
   }
 }

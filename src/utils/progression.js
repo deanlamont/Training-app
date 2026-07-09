@@ -7,8 +7,10 @@
 const DEFAULT_INCREMENT = 5
 
 function decideOne(ex, sets) {
+  // Challenge rows (optional final-set games) are excluded — a drop set at
+  // -30% or a 5s-tempo set must not block or fake a weight increase.
   const work = (sets || []).filter(s =>
-    s && s.type !== 'swap' && s.reps != null && s.w != null
+    s && s.type !== 'swap' && s.type !== 'challenge' && s.reps != null && s.w != null
   )
 
   if (!work.length) {
@@ -16,6 +18,26 @@ function decideOne(ex, sets) {
   }
 
   const increment = ex.increment ?? DEFAULT_INCREMENT
+
+  // Chipper: one total-rep target, chipped away in as few sets as possible.
+  // Weight goes up once the full target fits in 3 or fewer sets.
+  if (ex.type === 'chipper') {
+    const target = ex.max ?? ex.min ?? 0
+    const total = work.reduce((a, s) => a + (s.reps || 0), 0)
+    if (target > 0 && total >= target && work.length <= 3) {
+      return {
+        nextWeight: (ex.w ?? 0) + increment,
+        status: 'up',
+        note: `chipped ${total} in ${work.length} sets → +${increment}lb`,
+      }
+    }
+    return {
+      nextWeight: ex.w,
+      status: 'hold',
+      note: `chip: ${total}/${target} in ${work.length} sets — get it under 4 sets to move up`,
+    }
+  }
+
   const maxReps = ex.max ?? ex.min ?? 0
   const hitMax = work.every(s => s.reps >= maxReps)
 

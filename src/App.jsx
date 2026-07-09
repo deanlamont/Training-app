@@ -16,12 +16,12 @@ import {
   markSessionComplete,
   fetchMostRecentSessionAny,
   fetchPreviousSessionForDay,
+  loadChallengeStats,
 } from './utils/sessionSync'
 import { computeNextTargets } from './utils/progression'
 import { subscribe as subscribeQueue, getStatus as getQueueStatus, clearFailed } from './utils/writeQueue'
 
-const APP_VERSION = 'v2026-06-09-tennis'
-const MESO = 1
+const APP_VERSION = 'v2026-07-09-chippers'
 
 // Reference days are read-only notes screens, not logged workouts (no session
 // row, no progression, no localStorage backstop).
@@ -128,9 +128,51 @@ function fmt(n) {
 }
 
 function targetStr(ex) {
+  if (ex.type === 'chipper') {
+    return `CHIPPER · ${ex.max ?? ex.min} total @ ${fmt(ex.w)}lb`
+  }
   const reps = ex.max !== ex.min ? `${ex.min}-${ex.max}` : ex.min
   const sets = ex.sets ?? '?'
   return `${sets}×${reps} @ ${fmt(ex.w)}lb${ex.note ?? ''}`
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Final-set challenges — random, optional hypertrophy intensifiers.
+// One challenge is rolled per (session, exercise). Logging the result is
+// opt-in; skipping costs nothing and records nothing.
+// ═══════════════════════════════════════════════════════════════════════════
+const CHALLENGES = {
+  amrap:     { label: 'AMRAP',      desc: 'Final set: same weight, as many clean reps as possible. Log the rep count.' },
+  drop:      { label: 'DROP SET',   desc: 'Bonus set — right after your final set, strip ~30% and rep out. Log drop weight × reps.' },
+  restpause: { label: 'REST-PAUSE', desc: 'After your final set: rest 15s, rep out. Repeat once more. Log total bonus reps.' },
+  tempo:     { label: 'TEMPO',      desc: 'Final set: 5-second lowering on every rep, same weight. Log the reps you got.' },
+  iso:       { label: 'ISO HOLD',   desc: 'After your last rep: hold mid-range as long as you can. Log seconds in the reps field.' },
+}
+
+// Which challenges an exercise may draw. Shoulder (SLAP) and form-quality
+// rules are enforced here so fatigue games never land on risky patterns.
+function challengePoolFor(ex) {
+  if (ex.type === 'chipper') return []   // chippers ARE the challenge
+  const n = (ex.name || '').toLowerCase()
+  // Balance / explosive / hinge / carry work: form quality is the whole point.
+  if (/box jump|bulgarian|step-up|single-leg|band walk|romanian|deadlift|suitcase|carry|swing|hang|glute bridge/.test(n)) return []
+  if (/pull-up|ab wheel/.test(n)) return ['amrap']
+  if (/woodchop/.test(n)) return ['tempo']
+  if (/bench|press/.test(n)) return ['amrap', 'tempo']                                   // strict pressing only
+  if (/goblet|hammer|db curl|incline db/.test(n)) return ['amrap', 'restpause', 'tempo'] // free weights: no pin to pull
+  if (/lateral raise/.test(n)) return ['amrap', 'restpause', 'tempo', 'iso']
+  if (/cable|pulldown|face pull|extension|curl|row|fly/.test(n)) return ['amrap', 'drop', 'restpause', 'tempo', 'iso']
+  return ['amrap', 'tempo']
+}
+
+// Stable per (session, exercise) so the roll doesn't change on collapse/expand.
+function rollChallenge(ex, sessionId) {
+  const pool = challengePoolFor(ex)
+  if (!pool.length) return null
+  const seed = `${sessionId || 'local'}:${ex.id}`
+  let h = 0
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) | 0
+  return pool[Math.abs(h) % pool.length]
 }
 
 // Map raw set_logs rows for a previous session to `{ [shortExId]: [{w,reps}] }`.
@@ -142,9 +184,11 @@ function mapPreviousSetLogs(setLogs, day) {
     const ex = day?.exercises?.find(e => e._exercise_id === log.exercise_id)
     if (!ex) continue
     if (!byShortId[ex.id]) byShortId[ex.id] = []
+    const isChallenge = typeof log.set_type === 'string' && log.set_type.startsWith('challenge:')
     byShortId[ex.id].push({
       w: Number(log.weight),
       reps: log.reps,
+      ...(isChallenge ? { type: 'challenge', challenge: log.set_type.slice('challenge:'.length) } : {}),
     })
   }
   return byShortId
@@ -152,7 +196,7 @@ function mapPreviousSetLogs(setLogs, day) {
 
 function formatLastSets(lastSets) {
   if (!lastSets || lastSets.length === 0) return null
-  const work = lastSets.filter(s => s.type !== 'swap')
+  const work = lastSets.filter(s => s.type !== 'swap' && s.type !== 'challenge')
   if (work.length === 0) return null
   const allSameW = work.every(s => s.w === work[0].w)
   if (allSameW) {
@@ -164,7 +208,7 @@ function formatLastSets(lastSets) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Home Screen
 // ═══════════════════════════════════════════════════════════════════════════
-function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSession, activeSessionKey, onResumeSession, onRecover, onMobility, onHomeWorkout, userEmail, onSignOut }) {
+function HomeScreen({ split, progress, history, challengeStats, onStart, onEdit, hasActiveSession, activeSessionKey, onResumeSession, onRecover, onMobility, onHomeWorkout, userEmail, onSignOut }) {
   const days = Object.values(split)
   const mainDays = days.filter(d => !REFERENCE_DAY_KEYS.has(d.key))
   const optDay = days.find(d => d.key === 'day_5')
@@ -174,19 +218,48 @@ function HomeScreen({ split, progress, history, onStart, onEdit, hasActiveSessio
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '36px 20px 40px', background: C.bg }}>
-      <div style={{ marginBottom: 32 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
-          <Logo size={40} />
-          <div style={{ fontSize: 24, fontWeight: 700, color: C.acc, letterSpacing: -0.5 }}>SwoleBro</div>
-        </div>
-        <div style={{ fontSize: 14, color: C.sub }}>Mesocycle {MESO} · RP Method</div>
+      <div style={{ marginBottom: 24, textAlign: 'center' }}>
+        <Logo size={110} />
+        <div style={{
+          fontSize: 38, fontWeight: 900, letterSpacing: 3, marginTop: 4,
+          fontStyle: 'italic', textTransform: 'uppercase',
+          background: `linear-gradient(180deg, ${C.teal} 0%, ${C.blue} 40%, ${C.pink} 100%)`,
+          WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+          filter: `drop-shadow(0 0 12px rgba(255,46,146,0.35))`,
+        }}>SwoleBro</div>
+        <div style={{ height: 2, width: 200, margin: '8px auto 0', background: `linear-gradient(90deg, transparent, ${C.pink}, ${C.teal}, transparent)` }} />
         {userEmail && (
-          <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>
+          <div style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>
             {userEmail} ·{' '}
             <button onClick={onSignOut}
               style={{ background: 'none', border: 'none', color: C.muted, textDecoration: 'underline', cursor: 'pointer', padding: 0, fontSize: 12, fontFamily: 'inherit' }}>
               sign out
             </button>
+          </div>
+        )}
+      </div>
+
+      {/* Challenge scoreboard — the game layer. Always visible so a zero week stings. */}
+      <div style={{ marginBottom: 20, background: C.surface, border: `1px solid ${C.pink}`, borderRadius: 16, padding: '14px 16px', boxShadow: '0 0 18px rgba(255,46,146,0.18)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
+          <div style={{ fontSize: 13, color: C.pink, letterSpacing: 2, fontWeight: 800 }}>🎲 CHALLENGE SCOREBOARD</div>
+          <div style={{ fontSize: 11, color: C.muted, letterSpacing: 1 }}>LAST 7 DAYS</div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+          {[
+            { n: challengeStats?.weekAttempted ?? 0, label: 'ATTEMPTED', color: C.teal },
+            { n: challengeStats?.weekBeaten ?? 0, label: 'BEATEN', color: C.yellow },
+            { n: challengeStats?.streak ?? 0, label: 'STREAK 🔥', color: C.pink },
+          ].map(s => (
+            <div key={s.label} style={{ background: C.innerBg, borderRadius: 12, padding: '12px 8px', textAlign: 'center' }}>
+              <div style={{ fontSize: 30, fontWeight: 900, color: s.color, fontFamily: 'monospace', lineHeight: 1 }}>{s.n}</div>
+              <div style={{ fontSize: 10, color: C.sub, letterSpacing: 1.5, fontWeight: 700, marginTop: 6 }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+        {(challengeStats?.totalAttempted ?? 0) > 0 && (
+          <div style={{ fontSize: 12, color: C.muted, marginTop: 10, textAlign: 'center', letterSpacing: 0.5 }}>
+            all-time: {challengeStats.totalBeaten}/{challengeStats.totalAttempted} beaten
           </div>
         )}
       </div>
@@ -378,17 +451,33 @@ function Stepper({ value, onChange, step = 1, min = 0, max = 9999, label }) {
 // Exercise Card (collapsed / expanded with set entry)
 // ═══════════════════════════════════════════════════════════════════════════
 function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDeleteSet, onSkip, supabaseSessionId }) {
-  const workSets = sets.filter(s => s.type !== 'swap')
+  const allLogged = sets.filter(s => s.type !== 'swap')          // display + delete indexing
+  const workSets = allLogged.filter(s => s.type !== 'challenge') // counts, progression, defaults
   const hasAnyLogs = workSets.length > 0
   const skipped = sets.some(s => s.type === 'swap')
   const lastSummary = formatLastSets(lastSets)
   const targetSetCount = ex.sets ?? 0
-  const isFinalSet = targetSetCount > 0 && workSets.length === targetSetCount - 1
+
+  // Chipper: one total-rep target, chip away in as few mini-sets as possible.
+  const isChipper = ex.type === 'chipper'
+  const repTarget = isChipper ? (ex.max ?? ex.min ?? 0) : 0
+  const repsDone = workSets.reduce((a, s) => a + (s.reps || 0), 0)
+  const chipDone = isChipper && repTarget > 0 && repsDone >= repTarget
+  const lastWork = (lastSets ?? []).filter(s => s.type !== 'swap' && s.type !== 'challenge')
+  const lastChip = isChipper && lastWork.length > 0
+    ? { reps: lastWork.reduce((a, s) => a + (s.reps || 0), 0), sets: lastWork.length }
+    : null
+
+  // Final-set challenge: rolled once per session+exercise, purely opt-in.
+  const challengeKey = rollChallenge(ex, supabaseSessionId)
+  const challenge = challengeKey ? CHALLENGES[challengeKey] : null
+  const challengeResult = allLogged.find(s => s.type === 'challenge')
+  const lastChallenge = (lastSets ?? []).find(s => s.type === 'challenge' && s.challenge === challengeKey)
 
   // Determine default weight/reps for next set
   const lastSet = workSets[workSets.length - 1]
   const defaultWeight = lastSet?.w ?? ex.w ?? 0
-  const defaultReps = lastSet?.reps ?? Math.round(((ex.min ?? 8) + (ex.max ?? ex.min ?? 8)) / 2)
+  const defaultReps = lastSet?.reps ?? (isChipper ? 12 : Math.round(((ex.min ?? 8) + (ex.max ?? ex.min ?? 8)) / 2))
 
   // Local form state (only when expanded)
   const [weight, setWeight] = useState(defaultWeight)
@@ -399,7 +488,7 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
     if (expanded) {
       const last = workSets[workSets.length - 1]
       setWeight(last?.w ?? ex.w ?? 0)
-      setReps(last?.reps ?? Math.round(((ex.min ?? 8) + (ex.max ?? ex.min ?? 8)) / 2))
+      setReps(last?.reps ?? (isChipper ? 12 : Math.round(((ex.min ?? 8) + (ex.max ?? ex.min ?? 8)) / 2)))
     }
   }, [expanded, ex.id])
 
@@ -413,6 +502,12 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
     if (navigator.vibrate) navigator.vibrate(30)
   }
 
+  function doLogChallenge() {
+    if (weight == null || reps == null || reps <= 0 || !challengeKey) return
+    onLogSet({ type: 'challenge', challenge: challengeKey, w: weight, reps })
+    if (navigator.vibrate) navigator.vibrate([30, 40, 30])
+  }
+
   // Collapsed view
   if (!expanded) {
     const repsStr = ex.max !== ex.min ? `${ex.min}-${ex.max}` : ex.min
@@ -421,16 +516,25 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
         style={{ width: '100%', textAlign: 'left', background: hasAnyLogs ? C.innerBg : C.surface, border: `1px solid ${C.border}`, borderLeft: `4px solid ${hasAnyLogs ? C.acc : skipped ? C.muted : C.border}`, borderRadius: 14, padding: '16px', marginBottom: 10, cursor: 'pointer', fontFamily: 'inherit', color: C.text }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 17, fontWeight: 700, color: C.text }}>{ex.name}</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: C.text }}>
+              {ex.name}
+              {isChipper && (
+                <span style={{ fontSize: 11, fontWeight: 800, color: C.orange, border: `1px solid ${C.orange}`, borderRadius: 999, padding: '2px 8px', marginLeft: 8, letterSpacing: 1, verticalAlign: 'middle' }}>CHIPPER</span>
+              )}
+            </div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginTop: 5, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 21, fontWeight: 800, color: C.text, fontFamily: 'monospace' }}>
                 {fmt(ex.w)}<span style={{ fontSize: 13, fontWeight: 700, color: C.sub }}> lb</span>
               </span>
               <span style={{ fontSize: 15, color: C.muted }}>·</span>
-              <span style={{ fontSize: 16, fontWeight: 700, color: C.sub }}>{ex.sets ?? '?'}×{repsStr}</span>
+              <span style={{ fontSize: 16, fontWeight: 700, color: C.sub }}>{isChipper ? `${repTarget} TOTAL` : `${ex.sets ?? '?'}×${repsStr}`}</span>
               {ex.note && <span style={{ fontSize: 13, color: C.muted }}>{ex.note}</span>}
             </div>
-            {lastSummary && (
+            {isChipper && lastChip ? (
+              <div style={{ fontSize: 13, color: C.muted, marginTop: 5, fontFamily: 'monospace' }}>
+                Last: {lastChip.reps} reps in {lastChip.sets} sets
+              </div>
+            ) : lastSummary && (
               <div style={{ fontSize: 13, color: C.muted, marginTop: 5, fontFamily: 'monospace' }}>
                 Last: {lastSummary}
               </div>
@@ -438,13 +542,13 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
           </div>
           <div style={{ textAlign: 'right', flexShrink: 0 }}>
             {hasAnyLogs ? (
-              <div style={{ fontSize: 14, color: '#fff', fontWeight: 800, background: C.acc, padding: '7px 12px', borderRadius: 999, whiteSpace: 'nowrap' }}>
-                ✓ {workSets.length}/{targetSetCount || workSets.length}
+              <div style={{ fontSize: 14, color: '#fff', fontWeight: 800, background: chipDone || !isChipper ? C.acc : C.orange, padding: '7px 12px', borderRadius: 999, whiteSpace: 'nowrap' }}>
+                {isChipper ? `${chipDone ? '🏁 ' : ''}${repsDone}/${repTarget}` : `✓ ${workSets.length}/${targetSetCount || workSets.length}`}
               </div>
             ) : skipped ? (
               <div style={{ fontSize: 13, color: C.muted, fontWeight: 700, letterSpacing: 1 }}>SKIPPED</div>
             ) : (
-              <div style={{ fontSize: 13, color: C.blue, fontWeight: 800, letterSpacing: 1, border: `1px solid ${C.blue}`, padding: '7px 12px', borderRadius: 999 }}>SETS</div>
+              <div style={{ fontSize: 13, color: C.blue, fontWeight: 800, letterSpacing: 1, border: `1px solid ${C.blue}`, padding: '7px 12px', borderRadius: 999 }}>{isChipper ? 'CHIP' : 'SETS'}</div>
             )}
           </div>
         </div>
@@ -459,11 +563,15 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 19, fontWeight: 800, color: C.text }}>{ex.name}</div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 5, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 13, color: C.sub, letterSpacing: 0.5 }}>TARGET</span>
+            <span style={{ fontSize: 13, color: C.sub, letterSpacing: 0.5 }}>{isChipper ? 'CHIPPER' : 'TARGET'}</span>
             <span style={{ fontSize: 19, fontWeight: 800, color: C.acc, fontFamily: 'monospace' }}>{fmt(ex.w)}lb</span>
-            <span style={{ fontSize: 15, color: C.sub }}>× {ex.sets ?? '?'} × {ex.max !== ex.min ? `${ex.min}-${ex.max}` : ex.min}{ex.note ?? ''}</span>
+            <span style={{ fontSize: 15, color: C.sub }}>{isChipper ? `× ${repTarget} total reps` : `× ${ex.sets ?? '?'} × ${ex.max !== ex.min ? `${ex.min}-${ex.max}` : ex.min}${ex.note ?? ''}`}</span>
           </div>
-          {lastSummary && (
+          {isChipper && lastChip ? (
+            <div style={{ fontSize: 13, color: C.muted, marginTop: 5, fontFamily: 'monospace' }}>
+              Last: {lastChip.reps} reps in {lastChip.sets} sets — beat it
+            </div>
+          ) : lastSummary && (
             <div style={{ fontSize: 13, color: C.muted, marginTop: 5, fontFamily: 'monospace' }}>
               Last: {lastSummary}
             </div>
@@ -473,14 +581,17 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
           style={{ background: 'none', border: 'none', color: C.muted, fontSize: 26, cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}>×</button>
       </div>
 
-      {/* Logged sets */}
-      {workSets.length > 0 && (
+      {/* Logged sets (work sets + any challenge result) */}
+      {allLogged.length > 0 && (
         <div style={{ marginBottom: 16 }}>
-          {workSets.map((s, i) => {
-            const label = `SET ${s.num ?? i + 1}`
+          {allLogged.map((s, i) => {
+            const isChal = s.type === 'challenge'
+            const label = isChal
+              ? `🎲 ${CHALLENGES[s.challenge]?.label ?? 'CHALLENGE'}`
+              : `SET ${s.num ?? i + 1}`
             return (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '12px 14px', background: C.innerBg, borderRadius: 12, marginBottom: 6 }}>
-                <div style={{ flex: 1, fontSize: 13, color: C.muted, fontWeight: 700, letterSpacing: 1 }}>{label}</div>
+              <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '12px 14px', background: C.innerBg, borderRadius: 12, marginBottom: 6, border: isChal ? `1px dashed ${C.blue}` : 'none' }}>
+                <div style={{ flex: 1, fontSize: 13, color: isChal ? C.blue : C.muted, fontWeight: 700, letterSpacing: 1 }}>{label}</div>
                 <div style={{ fontSize: 21, color: C.text, fontWeight: 800, fontFamily: 'monospace', marginRight: 12 }}>
                   {fmt(s.w)}<span style={{ fontSize: 14, color: C.sub, fontWeight: 700 }}>lb</span> × {s.reps}
                 </div>
@@ -494,13 +605,60 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
         </div>
       )}
 
-      {/* Athlean-X final-set coaching: always show failure cue; intensifier if any. */}
-      {isFinalSet && (
+      {/* Chipper progress bar + sets-used counter */}
+      {isChipper && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+            <span style={{ fontSize: 15, fontWeight: 800, color: chipDone ? C.acc : C.text, fontFamily: 'monospace' }}>
+              {repsDone}/{repTarget} reps
+            </span>
+            <span style={{ fontSize: 13, color: C.sub, fontWeight: 700 }}>
+              {workSets.length} {workSets.length === 1 ? 'set' : 'sets'} used
+            </span>
+          </div>
+          <div style={{ height: 8, background: C.border, borderRadius: 4, overflow: 'hidden' }}>
+            <div style={{ height: '100%', background: chipDone ? C.acc : C.orange, width: `${repTarget ? Math.min(100, Math.round((repsDone / repTarget) * 100)) : 0}%`, transition: 'width 0.2s', borderRadius: 4 }} />
+          </div>
+          {chipDone && (
+            <div style={{ fontSize: 14, color: C.acc, fontWeight: 800, marginTop: 8 }}>
+              🏁 CHIPPED — {repsDone} reps in {workSets.length} sets{lastChip ? ` (last time: ${lastChip.sets})` : ''}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Coaching cues — shown up front so they're read BEFORE the sets are done,
+          not surfaced on the last logged set (sets are often logged all at once). */}
+      {isChipper ? (
+        <div style={{ fontSize: 14, color: C.orange, lineHeight: 1.4, marginBottom: 12, padding: '10px 12px', background: C.innerBg, borderRadius: 10, borderLeft: `3px solid ${C.orange}` }}>
+          <div><span style={{ fontWeight: 700, letterSpacing: 1, marginRight: 6 }}>CHIPPER:</span>{repTarget} total reps, as few sets as possible</div>
+          <div style={{ marginTop: 2 }}>rest just enough to keep form sharp · stop each set with 3-5 clean reps left</div>
+          {ex.intensifier && (
+            <div style={{ marginTop: 2 }}>↳ {ex.intensifier}</div>
+          )}
+        </div>
+      ) : (
         <div style={{ fontSize: 14, color: C.orange, lineHeight: 1.4, marginBottom: 12, padding: '10px 12px', background: C.innerBg, borderRadius: 10, borderLeft: `3px solid ${C.orange}` }}>
           <div><span style={{ fontWeight: 700, letterSpacing: 1, marginRight: 6 }}>FINAL SET:</span>take to technique failure</div>
           {ex.intensifier && (
             <div style={{ marginTop: 2 }}>↳ {ex.intensifier}</div>
           )}
+        </div>
+      )}
+
+      {/* Final-set challenge card — random, optional. Log it or ignore it. */}
+      {challenge && !challengeResult && (
+        <div style={{ fontSize: 14, color: C.blue, lineHeight: 1.4, marginBottom: 12, padding: '10px 12px', background: C.innerBg, borderRadius: 10, border: `1px dashed ${C.blue}` }}>
+          <div><span style={{ fontWeight: 800, letterSpacing: 1, marginRight: 6 }}>🎲 CHALLENGE · {challenge.label}</span></div>
+          <div style={{ marginTop: 2, color: C.sub }}>{challenge.desc}</div>
+          {lastChallenge && (
+            <div style={{ marginTop: 4, fontFamily: 'monospace', fontWeight: 700 }}>
+              Last time: {fmt(lastChallenge.w)}lb × {lastChallenge.reps} — beat it
+            </div>
+          )}
+          <div style={{ marginTop: 4, fontSize: 12, color: C.muted }}>
+            optional — set weight/reps below, tap LOG CHALLENGE. Or just ignore it.
+          </div>
         </div>
       )}
 
@@ -514,6 +672,13 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
         style={{ width: '100%', padding: 18, background: C.acc, border: 'none', borderRadius: 14, color: '#fff', fontSize: 18, fontWeight: 800, letterSpacing: 1, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 10 }}>
         LOG SET
       </button>
+
+      {challenge && !challengeResult && (
+        <button onClick={doLogChallenge}
+          style={{ width: '100%', padding: 14, background: 'none', border: `1px dashed ${C.blue}`, borderRadius: 12, color: C.blue, fontSize: 15, fontWeight: 800, letterSpacing: 1, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 10 }}>
+          🎲 LOG CHALLENGE
+        </button>
+      )}
 
       {!hasAnyLogs && !skipped && (
         <button onClick={onSkip}
@@ -540,7 +705,8 @@ function SessionScreen({
   const [showPeek, setShowPeek] = useState(false)
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false)
 
-  const loggedCount = sessionExercises.filter(ex => (sessionLogs[ex.id] || []).some(s => s.type !== 'swap')).length
+  const loggedCount = sessionExercises.filter(ex => (sessionLogs[ex.id] || []).some(s => s.type !== 'swap' && s.type !== 'challenge')).length
+  const challengesDone = Object.values(sessionLogs).flat().filter(s => s?.type === 'challenge').length
 
   function logSet(exerciseId, newSet) {
     const next = { ...sessionLogs, [exerciseId]: [...(sessionLogs[exerciseId] || []).filter(s => s.type !== 'swap'), newSet] }
@@ -595,20 +761,37 @@ function SessionScreen({
       )}
 
       {/* Header */}
-      <div style={{ flexShrink: 0, background: C.surface, borderBottom: `0.5px solid ${C.border}` }}>
-        <div style={{ display: 'flex', alignItems: 'center', padding: '14px 18px 12px', gap: 12 }}>
+      <div style={{ flexShrink: 0, background: C.surface, borderBottom: `1px solid ${C.border}`, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', padding: '14px 18px 10px', gap: 10 }}>
           <button onClick={onBack} aria-label="back"
             style={{ background: 'none', border: 'none', color: C.sub, fontSize: 28, cursor: 'pointer', padding: '4px 8px', lineHeight: 1 }}>←</button>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 21, fontWeight: 800, color: C.text, lineHeight: 1.1 }}>{day.label}</div>
-            <div style={{ fontSize: 14, color: C.sub, marginTop: 2 }}>{day.sub} · Cycle {currentCycle}</div>
+          <Logo size={44} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{
+              fontSize: 26, fontWeight: 900, lineHeight: 1.1, letterSpacing: 1.5,
+              fontStyle: 'italic', textTransform: 'uppercase',
+              background: `linear-gradient(180deg, ${C.teal} 0%, ${C.blue} 45%, ${C.pink} 100%)`,
+              WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+            }}>{day.label}</div>
+            <div style={{ fontSize: 13, color: C.sub, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{day.sub} · Cycle {currentCycle}</div>
           </div>
           <button onClick={() => setShowPeek(true)}
-            style={{ background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 8, color: C.muted, fontSize: 13, fontWeight: 'bold', letterSpacing: 1, padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit', marginRight: 4 }}>DAYS</button>
-          <div style={{ fontSize: 16, color: C.text, fontFamily: 'monospace', fontWeight: 800 }}>{loggedCount}/{sessionExercises.length}</div>
+            style={{ background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 8, color: C.muted, fontSize: 13, fontWeight: 'bold', letterSpacing: 1, padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit' }}>DAYS</button>
         </div>
-        <div style={{ height: 5, background: C.border, margin: '0 18px 12px', borderRadius: 3, overflow: 'hidden' }}>
-          <div style={{ height: '100%', background: C.acc, width: `${sessionExercises.length ? Math.round((loggedCount / sessionExercises.length) * 100) : 0}%`, transition: 'width 0.2s', borderRadius: 3 }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 18px 12px' }}>
+          <div style={{ flex: 1, height: 8, background: C.innerBg, borderRadius: 4, overflow: 'hidden', border: `1px solid ${C.border}` }}>
+            <div style={{
+              height: '100%', width: `${sessionExercises.length ? Math.round((loggedCount / sessionExercises.length) * 100) : 0}%`,
+              background: `linear-gradient(90deg, ${C.blue}, ${C.pink})`,
+              boxShadow: `0 0 8px ${C.pink}`, transition: 'width 0.3s', borderRadius: 4,
+            }} />
+          </div>
+          <div style={{ fontSize: 15, color: C.text, fontFamily: 'monospace', fontWeight: 800, flexShrink: 0 }}>{loggedCount}/{sessionExercises.length}</div>
+          {challengesDone > 0 && (
+            <div style={{ fontSize: 13, color: C.blue, fontWeight: 800, flexShrink: 0, border: `1px dashed ${C.blue}`, borderRadius: 999, padding: '3px 10px' }}>
+              🎲 {challengesDone}
+            </div>
+          )}
         </div>
       </div>
 
@@ -1148,6 +1331,7 @@ export default function App() {
   const [split, setSplit] = useState(null)
   const [progress, setProgress] = useState(null)
   const [history, setHistory] = useState([])
+  const [challengeStats, setChallengeStats] = useState(null)
   const [dataReady, setDataReady] = useState(false)
 
   const wakeLockRef = useRef(null)
@@ -1207,13 +1391,17 @@ export default function App() {
           await seedUserData(user.id)
           result = await loadProgramFromSupabase(user.id)
         }
-        const hist = await loadHistoryFromSupabase(user.id)
+        const [hist, stats] = await Promise.all([
+          loadHistoryFromSupabase(user.id),
+          loadChallengeStats(user.id),
+        ])
         if (cancelled) return
         if (result?.program) {
           setSplit(result.program)
           setProgress(result.progress)
         }
         setHistory(hist)
+        setChallengeStats(stats)
         setDataReady(true)
       } catch (e) {
         console.error('[supabase init]', e)
@@ -1226,8 +1414,12 @@ export default function App() {
 
   async function reloadHistory() {
     if (!user) return
-    const hist = await loadHistoryFromSupabase(user.id)
+    const [hist, stats] = await Promise.all([
+      loadHistoryFromSupabase(user.id),
+      loadChallengeStats(user.id),
+    ])
     setHistory(hist)
+    setChallengeStats(stats)
   }
 
   // Session state is mirrored to localStorage on every change so a tab kill
@@ -1281,7 +1473,7 @@ export default function App() {
         userId: user.id,
         splitDayId: day._split_day_id,
         weekNumber: cycle,
-        mesocycle: MESO,
+        mesocycle: 1,
       })
       if (newId) setSupabaseSessionId(newId)
 
@@ -1413,7 +1605,7 @@ export default function App() {
     <div style={{ position: 'relative', maxWidth: 480, margin: '0 auto', height: '100dvh', background: C.bg, display: 'flex', flexDirection: 'column', color: C.text, fontFamily: '-apple-system, Arial, sans-serif' }}>
       <SyncPill />
       {screen === 'home' && (
-        <HomeScreen split={split} progress={progress} history={history}
+        <HomeScreen split={split} progress={progress} history={history} challengeStats={challengeStats}
           onStart={startSession} onEdit={() => setScreen('edit')}
           hasActiveSession={hasActiveSession} activeSessionKey={dayKey}
           onResumeSession={() => setScreen('session')} onRecover={recoverLatest}
