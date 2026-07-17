@@ -81,6 +81,135 @@ const MOBILITY_ROUTINE = [
 ]
 const MOBILITY_DONE_KEY = 'swolebro_mobility_done'
 
+// ─── Exercise Library (read-only reference) ─────────────────────────────────
+// Jeff Cavaliere's 12 foundational lifts, rewritten for quick reading. Pure
+// reference — no logging, no checkboxes. The point is the movement PATTERN and
+// the pain-free variation, not any single barbell iteration.
+const LIBRARY_PRINCIPLES = [
+  { title: 'Train the pattern, not the lift', body: 'A specific exercise is just one way to load a movement. The squat, the hinge, the press — those are what matter. Swap the iteration freely; keep the pattern.' },
+  { title: 'Pain is not a reason to skip', body: 'A cranky knee or back means pick a pain-free variation — not drop the pattern entirely. There is almost always a version that works.' },
+  { title: 'Corrective work is not optional', body: 'Heavy pressing and pulling stays healthy only if you also train the rotator cuff and the muscles that pull the shoulder blades back. Skip them and imbalances catch up with you.' },
+  { title: 'Keep bodyweight work hard', body: 'Push-ups and pull-ups only keep building once they stay challenging. Add load, add difficulty, or use them as finishers — don\'t let them turn into easy volume.' },
+]
+
+const LIBRARY = [
+  {
+    section: 'Foundation · Lower Body & Posterior Chain',
+    exercises: [
+      {
+        name: 'Squat', role: 'Lower-body king',
+        trains: 'Quads, glutes, adductors, hamstrings',
+        why: 'A fundamental life pattern — sitting down and standing up under load. The single best driver of lower-body strength.',
+        variations: [
+          { when: 'Back issues', do: 'Bulgarian split squat — keeps the lower back flatter and neutral' },
+          { when: 'Knee / patellar tendon', do: 'Box squat — controls depth and knee travel' },
+          { when: "Can't load a barbell", do: 'Goblet or drop squat — accessible, still hits the pattern' },
+        ],
+      },
+      {
+        name: 'Deadlift', role: 'The hinge',
+        trains: 'Whole posterior chain — hams, glutes, back',
+        why: 'The premier posterior-chain lift. The skill is the hinge: let the hips sit back rather than bending at the waist.',
+        variations: [
+          { when: 'Lower-back pain', do: 'Mat-elevated pull — cut the range an inch or two and it often goes pain-free' },
+          { when: 'Lower-back pain', do: 'Trap-bar deadlift — higher handles, shallower depth, easier on the spine' },
+        ],
+      },
+      {
+        name: 'Lunge', role: 'Multi-plane',
+        trains: 'Legs, plus the side-to-side and rotational planes',
+        why: 'Squats and deadlifts live in one plane. The hip is a 3D ball-and-socket joint — lunges train the directions the big lifts miss.',
+        variations: [
+          { when: 'Want posterior-chain bias', do: 'Lean the torso forward' },
+          { when: 'Want quad bias', do: 'Stay tall and upright' },
+          { when: 'Train the other planes', do: 'Side lunge (side-to-side), drop-step lunge (rotational)' },
+        ],
+      },
+    ],
+  },
+  {
+    section: 'Upper Body · Push & Pull',
+    exercises: [
+      {
+        name: 'Bench Press', role: 'King of pushing',
+        trains: 'Chest, shoulders, triceps',
+        why: 'The primary horizontal press and the biggest upper-body pushing strength builder.',
+        variations: [
+          { when: 'Shoulder pain', do: 'Slow the reps down — it\'s usually a stability gap the tempo exposes, not real damage' },
+        ],
+      },
+      {
+        name: 'Overhead Press', role: 'Vertical push',
+        trains: 'Shoulders, triceps, upper chest',
+        why: 'The main vertical-plane strength builder for the upper body.',
+        variations: [
+          { when: 'Impingement / mobility', do: 'Single dumbbell — lets the wrist stack over elbow over shoulder' },
+        ],
+      },
+      {
+        name: 'Pull-Up', role: 'Vertical pull',
+        trains: 'Lats, upper back, core',
+        why: 'One of the best back exercises there is — and it demands tension from fingertips to feet.',
+        variations: [
+          { when: 'Too easy', do: 'Add weight with a belt' },
+          { when: 'Too hard', do: 'Loop a resistance band for assistance' },
+        ],
+      },
+      {
+        name: 'Barbell Row', role: 'Horizontal pull',
+        trains: 'Mid-back, lats, rear delts',
+        why: 'Covers the horizontal pull and reinforces the same hinge you built on the deadlift.',
+        variations: [
+          { when: 'Want more load', do: 'Dead row — reset on the floor each rep, then hinge and pull explosively' },
+        ],
+      },
+      {
+        name: 'Push-Up', role: 'Never sleep on it',
+        trains: 'Chest, shoulders, triceps, core',
+        why: 'Endlessly scalable and always useful — as a builder or a finisher.',
+        variations: [
+          { when: 'Past 30–50 clean reps', do: 'Make it harder (feet up, weighted) or run it as a drop-set finisher' },
+        ],
+      },
+    ],
+  },
+  {
+    section: 'Corrective & Arms',
+    exercises: [
+      {
+        name: 'Face Pull', role: 'Shoulder health',
+        trains: 'Upper back, rotator cuff, scapular retractors',
+        why: 'The go-to for the upper posterior chain that keeps your pressing healthy. Flexible: cable, band, or even a weighted towel.',
+        variations: [],
+      },
+      {
+        name: 'External Rotation', role: 'Non-negotiable',
+        trains: 'Rotator cuff',
+        why: 'These are the only muscles that externally rotate the shoulder. Don\'t train them and you build an imbalance that eventually compromises the joint.',
+        variations: [
+          { when: 'Options', do: 'Banded external rotation or side-lying dumbbell rotations' },
+        ],
+      },
+      {
+        name: 'Lying Triceps Extension', role: 'Long-head stretch',
+        trains: 'Triceps — especially the long head',
+        why: 'Direct arm work matters for size. The overhead stretch loads the long head, which is two-thirds of the arm.',
+        variations: [
+          { when: 'Overhead stretch bothers you', do: 'Skull crusher or JM press — same muscle, less shoulder stretch' },
+        ],
+      },
+      {
+        name: 'Barbell Curl', role: 'Direct biceps',
+        trains: 'Biceps',
+        why: 'The barbell lets you cheat the weight up and fight the lowering — eccentric overload, a primary driver of biceps growth.',
+        variations: [
+          { when: 'Want tension at the top', do: 'Add bands — shifts peak resistance to the top of the curl' },
+        ],
+      },
+    ],
+  },
+]
+
 function SyncPill() {
   const [s, setS] = useState(getQueueStatus())
   useEffect(() => subscribeQueue(setS), [])
@@ -208,7 +337,7 @@ function formatLastSets(lastSets) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Home Screen
 // ═══════════════════════════════════════════════════════════════════════════
-function HomeScreen({ split, progress, history, challengeStats, onStart, onEdit, hasActiveSession, activeSessionKey, onResumeSession, onRecover, onMobility, onHomeWorkout, userEmail, onSignOut }) {
+function HomeScreen({ split, progress, history, challengeStats, onStart, onEdit, hasActiveSession, activeSessionKey, onResumeSession, onRecover, onMobility, onHomeWorkout, onLibrary, userEmail, onSignOut }) {
   const days = Object.values(split)
   const mainDays = days.filter(d => !REFERENCE_DAY_KEYS.has(d.key))
   const optDay = days.find(d => d.key === 'day_5')
@@ -357,6 +486,15 @@ function HomeScreen({ split, progress, history, challengeStats, onStart, onEdit,
           <div style={{ fontSize: 15, color: C.sub, marginTop: 2 }}>Hips · Back · Hams · Coil · 15 min</div>
         </div>
         <div style={{ fontSize: 15, color: C.blue, fontWeight: 'bold', letterSpacing: 1 }}>WIND DOWN</div>
+      </button>
+
+      <button onClick={onLibrary}
+        style={{ width: '100%', marginBottom: 16, padding: '18px 20px', background: C.surface, border: `0.5px solid ${C.teal}`, borderLeft: `3px solid ${C.teal}`, borderRadius: 14, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <div style={{ fontSize: 17, fontWeight: 600, color: C.text }}>Exercise Library</div>
+          <div style={{ fontSize: 15, color: C.sub, marginTop: 2 }}>The 12 foundational lifts · reading</div>
+        </div>
+        <div style={{ fontSize: 15, color: C.teal, fontWeight: 'bold', letterSpacing: 1 }}>READ</div>
       </button>
 
       <button onClick={onEdit}
@@ -1218,6 +1356,92 @@ function MobilityScreen({ onBack }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Exercise Library Screen — read-only reference (the 12 foundational lifts)
+// ═══════════════════════════════════════════════════════════════════════════
+function LibraryScreen({ onBack }) {
+  const [openId, setOpenId] = useState(null)
+
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: '36px 20px 40px', background: C.bg }}>
+      <button onClick={onBack}
+        style={{ background: 'none', border: 'none', color: C.muted, fontSize: 15, fontWeight: 'bold', letterSpacing: 2, cursor: 'pointer', padding: '0 0 16px', fontFamily: 'inherit' }}>
+        ← BACK
+      </button>
+
+      <div style={{ marginBottom: 22 }}>
+        <div style={{ fontSize: 15, color: C.acc, letterSpacing: 4, marginBottom: 8, fontWeight: 'bold' }}>THE LIBRARY</div>
+        <div style={{
+          fontSize: 28, fontWeight: 900, lineHeight: 1.15, letterSpacing: 0.5,
+          fontStyle: 'italic', textTransform: 'uppercase',
+          background: `linear-gradient(180deg, ${C.teal} 0%, ${C.blue} 45%, ${C.pink} 100%)`,
+          WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+        }}>12 Foundational Lifts</div>
+        <div style={{ fontSize: 14, color: C.sub, marginTop: 6, lineHeight: 1.5 }}>
+          The essential movement patterns — and the pain-free variation for each. Just for reading.
+        </div>
+      </div>
+
+      {/* Guiding principles */}
+      <div style={{ background: C.surface, border: `1px solid ${C.pink}`, borderRadius: 16, padding: '16px 18px', marginBottom: 24, boxShadow: '0 0 18px rgba(255,46,146,0.15)' }}>
+        <div style={{ fontSize: 13, color: C.pink, letterSpacing: 2, fontWeight: 800, marginBottom: 12 }}>THE RULES</div>
+        {LIBRARY_PRINCIPLES.map((p, i) => (
+          <div key={i} style={{ marginBottom: i < LIBRARY_PRINCIPLES.length - 1 ? 14 : 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 3 }}>{p.title}</div>
+            <div style={{ fontSize: 14, color: C.sub, lineHeight: 1.5 }}>{p.body}</div>
+          </div>
+        ))}
+      </div>
+
+      {LIBRARY.map(group => (
+        <div key={group.section} style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 12, color: C.teal, letterSpacing: 1.5, fontWeight: 800, marginBottom: 10, textTransform: 'uppercase' }}>
+            {group.section}
+          </div>
+          {group.exercises.map(ex => {
+            const isOpen = openId === ex.name
+            return (
+              <button key={ex.name} onClick={() => setOpenId(isOpen ? null : ex.name)}
+                style={{ width: '100%', textAlign: 'left', background: isOpen ? C.innerBg : C.surface, border: `0.5px solid ${C.border}`, borderLeft: `3px solid ${isOpen ? C.acc : C.border}`, borderRadius: 12, padding: '14px 16px', marginBottom: 8, cursor: 'pointer', fontFamily: 'inherit', color: C.text }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 17, fontWeight: 700, color: C.text }}>{ex.name}</div>
+                    <div style={{ fontSize: 13, color: C.acc, fontWeight: 700, letterSpacing: 0.5, marginTop: 2 }}>{ex.role}</div>
+                  </div>
+                  <div style={{ fontSize: 15, color: C.muted, flexShrink: 0 }}>{isOpen ? '▲' : '▼'}</div>
+                </div>
+
+                {isOpen && (
+                  <div style={{ marginTop: 12, borderTop: `0.5px solid ${C.border}`, paddingTop: 12 }}>
+                    <div style={{ fontSize: 11, color: C.muted, letterSpacing: 1, fontWeight: 700, marginBottom: 3 }}>TRAINS</div>
+                    <div style={{ fontSize: 14, color: C.text, lineHeight: 1.5, marginBottom: 12 }}>{ex.trains}</div>
+                    <div style={{ fontSize: 14, color: C.sub, lineHeight: 1.55, marginBottom: ex.variations.length ? 14 : 0 }}>{ex.why}</div>
+                    {ex.variations.length > 0 && (
+                      <>
+                        <div style={{ fontSize: 11, color: C.muted, letterSpacing: 1, fontWeight: 700, marginBottom: 8 }}>IF IT HURTS / SCALING</div>
+                        {ex.variations.map((v, i) => (
+                          <div key={i} style={{ display: 'flex', gap: 10, marginBottom: i < ex.variations.length - 1 ? 8 : 0, alignItems: 'baseline' }}>
+                            <div style={{ flexShrink: 0, fontSize: 12, color: C.orange, fontWeight: 700, minWidth: 0 }}>{v.when}</div>
+                            <div style={{ fontSize: 13, color: C.sub, lineHeight: 1.45 }}>→ {v.do}</div>
+                          </div>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      ))}
+
+      <div style={{ fontSize: 12, color: C.muted, textAlign: 'center', marginTop: 8, lineHeight: 1.5 }}>
+        Based on Jeff Cavaliere's 12 essential exercises.
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Home Workout Screen — daily KB swings + air squats, local-only counter
 // ═══════════════════════════════════════════════════════════════════════════
 function HomeWorkoutScreen({ onBack }) {
@@ -1654,10 +1878,14 @@ export default function App() {
           onResumeSession={() => setScreen('session')} onRecover={recoverLatest}
           onMobility={() => setScreen('mobility')}
           onHomeWorkout={() => setScreen('home_workout')}
+          onLibrary={() => setScreen('library')}
           userEmail={user.email} onSignOut={signOut} />
       )}
       {screen === 'mobility' && (
         <MobilityScreen onBack={() => setScreen('home')} />
+      )}
+      {screen === 'library' && (
+        <LibraryScreen onBack={() => setScreen('home')} />
       )}
       {screen === 'home_workout' && (
         <HomeWorkoutScreen onBack={() => setScreen('home')} />
