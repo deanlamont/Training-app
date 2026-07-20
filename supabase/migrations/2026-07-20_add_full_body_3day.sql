@@ -1,8 +1,10 @@
 -- 2026-07-20: Add an alternate 3-day full-body split (Full Body 1/2/3).
 --
 -- WHY: A fallback for weeks with only 3 lifting slots (e.g. tennis-heavy
--- weeks). Combines Push A/B + Pull A/B into 3 balanced full-body days,
--- reusing the exact cycle-4 weights/reps/intensifiers from the 4-day split.
+-- weeks). Combines Push A/B + Pull A/B into 3 balanced full-body days.
+-- Progressive overload is continuous across both splits: each Full Body
+-- exercise seeds from the user's CURRENT live weight (see the targets block)
+-- and stays synced with the 4-day split via app-side forward-sync thereafter.
 -- Coexists with the existing days (sort_order 6/7/8, after Day 5).
 --
 -- Idempotent — re-runnable. All inserts upsert on their natural keys.
@@ -75,8 +77,14 @@ on conflict (split_day_id, short_id) do update
 insert into progression_targets
   (user_id, exercise_id, split_day_id, week_number, mesocycle,
    target_weight, target_sets, target_reps_min, target_reps_max, target_rir, set_type, source)
+-- target_weight is pulled from the user's CURRENT live weight for each
+-- exercise (highest-weight-wins across every day's current-week row, the same
+-- rule as 2026-06-19_sync_shared_exercise_weights) so Full Body is aligned with
+-- the 4-day split from first load — no catch-up lag. The v.w column is only a
+-- fallback for an exercise that has no existing target yet. sets/reps/rir are
+-- Full Body's own straight-set prescription.
 select u.id, ex.id, sd.id, 4, 1,
-       v.w, v.sets, v.rmin, v.rmax, v.rir, v.set_type, 'seed'
+       coalesce(live.w, v.w), v.sets, v.rmin, v.rmax, v.rir, v.set_type, 'mirror'
 from (values
   -- FULL BODY 1
   ('full_body_1', 'Nautilus PL Incline Bench',        45::numeric,  4::int, 8::int,  8::int,  2::int, 'straight'::text),
@@ -109,6 +117,16 @@ from (values
 cross join (select id from auth.users where email = 'chadleydean@gmail.com') u
 join split_days sd on sd.day_key = v.day_key and sd.user_id = u.id
 join exercises ex on ex.name = v.ex_name
+left join lateral (
+  -- current live weight for this exercise: max across every day's current week
+  select max(pt.target_weight) as w
+    from progression_targets pt
+    join split_days sd2 on sd2.id = pt.split_day_id
+   where pt.user_id     = u.id
+     and pt.exercise_id = ex.id
+     and pt.mesocycle   = 1
+     and pt.week_number = sd2.current_week
+) live on true
 on conflict (user_id, exercise_id, split_day_id, week_number, mesocycle) do update
   set target_weight   = excluded.target_weight,
       target_sets     = excluded.target_sets,

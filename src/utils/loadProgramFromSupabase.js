@@ -181,7 +181,7 @@ async function mirrorWeightsToSharedDays(userId, sourceSplitDayId, sourceTargetR
   if (mErr) console.warn('[mirrorWeightsToSharedDays]', mErr)
 }
 
-const DAY_ORDER = { push_a: 1, push_b: 2, pull_a: 3, pull_b: 4, day_5: 5, tennis_prep: 6 }
+const DAY_ORDER = { push_a: 1, push_b: 2, pull_a: 3, pull_b: 4, day_5: 5, tennis_prep: 6, full_body_1: 7, full_body_2: 8, full_body_3: 9 }
 
 /**
  * Persists an edited program back to Supabase. Replaces split_day_exercises
