@@ -7,6 +7,13 @@ export async function seedUserData(userId) {
     { day_key: 'pull_a', day_label: 'Pull A', subtitle: 'Back Width · Biceps · Hamstrings',           sort_order: 3, current_week: 4 },
     { day_key: 'pull_b', day_label: 'Pull B', subtitle: 'Upper Back · Biceps · Hamstrings',           sort_order: 4, current_week: 4 },
     { day_key: 'day_5',  day_label: 'Day 5',  subtitle: 'Longevity · Mobility (Optional)',            sort_order: 5, current_week: 4 },
+    // Alternate 3-day full-body split — combines Push A/B + Pull A/B for weeks
+    // with only 3 available lifting slots (e.g. tennis-heavy weeks). Same
+    // weights/reps as the 4-day days, just redistributed. Coexists with the
+    // 4-day split; pick whichever set of days you open that week.
+    { day_key: 'full_body_1', day_label: 'Full Body 1', subtitle: 'Incline · Vertical Pull · Quads',           sort_order: 6, current_week: 4 },
+    { day_key: 'full_body_2', day_label: 'Full Body 2', subtitle: 'Flat · Horizontal Pull · Hamstrings',       sort_order: 7, current_week: 4 },
+    { day_key: 'full_body_3', day_label: 'Full Body 3', subtitle: 'DB Chest · Vertical Pull · Quads + Posterior', sort_order: 8, current_week: 4 },
   ];
 
   const { data: days, error: dErr } = await supabase
@@ -76,6 +83,36 @@ export async function seedUserData(userId) {
     { day: 'pull_b', ex: 'Hip Thrust',                          sid: 'plb_thrust',   type: 'straight', sets: 3, min: 8,  max: 12, order: 8, intensifier: '2s pause + squeeze at top' },
     { day: 'pull_b', ex: 'Suitcase Carry',                      sid: 'plb_suitcase', type: 'straight', sets: 2, min: 20, max: 20, order: 9, note: '/side, walking (anti-rotation core)' },
     { day: 'pull_b', ex: 'Kettlebell Swing',                    sid: 'plb_kb',       type: 'straight', sets: 3, min: 15, max: 20, order: 10, note: 'conditioning finisher' },
+
+    // FULL BODY 1 — Incline · Vertical Pull · Quads
+    { day: 'full_body_1', ex: 'Nautilus PL Incline Bench',      sid: 'fb1_inc',     type: 'straight', sets: 4, min: 8,  max: 8,  order: 1, note: '/side' },
+    { day: 'full_body_1', ex: 'Nautilus Lat Pulldown overhand', sid: 'fb1_pd_over', type: 'straight', sets: 3, min: 8,  max: 10, order: 2, note: 'or close-grip V-handle for rear delt bias' },
+    { day: 'full_body_1', ex: 'Nautilus PL Seated Press',       sid: 'fb1_seat_pr', type: 'straight', sets: 3, min: 10, max: 10, order: 3, note: '/side' },
+    { day: 'full_body_1', ex: 'Cable Curls',                    sid: 'fb1_cc',      type: 'straight', sets: 3, min: 12, max: 15, order: 4, intensifier: 'Slow 3s eccentric + peak squeeze' },
+    { day: 'full_body_1', ex: 'Cable Rope Overhead Extension',  sid: 'fb1_rope_oh', type: 'straight', sets: 3, min: 12, max: 12, order: 5 },
+    { day: 'full_body_1', ex: 'Nautilus Xpload Leg Press Incline', sid: 'fb1_leg_pr', type: 'straight', sets: 3, min: 10, max: 10, order: 6, note: '/side' },
+    { day: 'full_body_1', ex: 'Cable Face Pulls',               sid: 'fb1_fp',      type: 'straight', sets: 3, min: 15, max: 20, order: 7, intensifier: '1s pause + squeeze at peak' },
+    { day: 'full_body_1', ex: 'Kettlebell Swing',               sid: 'fb1_kb',      type: 'straight', sets: 3, min: 15, max: 20, order: 8, note: 'conditioning finisher (optional on match days)' },
+
+    // FULL BODY 2 — Flat · Horizontal Pull · Hamstrings
+    { day: 'full_body_2', ex: 'Nautilus PL Flat Bench',         sid: 'fb2_flat',    type: 'straight', sets: 4, min: 8,  max: 10, order: 1, note: '/side' },
+    { day: 'full_body_2', ex: 'Nautilus Chest Supported Row High', sid: 'fb2_row_high', type: 'straight', sets: 3, min: 10, max: 15, order: 2 },
+    { day: 'full_body_2', ex: 'Arsenal Lateral Raises',         sid: 'fb2_lat_r',   type: 'straight', sets: 3, min: 12, max: 15, order: 3, intensifier: 'Slow 3s eccentric + 1s pause at top' },
+    { day: 'full_body_2', ex: 'Incline DB Curls',               sid: 'fb2_inc_curl', type: 'straight', sets: 3, min: 12, max: 15, order: 4, intensifier: 'Slow 3s eccentric (deep stretch)' },
+    { day: 'full_body_2', ex: 'Cable Rope Overhead Extension',  sid: 'fb2_rope_oh', type: 'straight', sets: 3, min: 12, max: 15, order: 5, intensifier: 'Slow 3s eccentric (long-head stretch)' },
+    { day: 'full_body_2', ex: 'Romanian Deadlift',             sid: 'fb2_rdl',     type: 'straight', sets: 3, min: 8,  max: 8,  order: 6 },
+    { day: 'full_body_2', ex: 'Cable Rear Delt Fly',            sid: 'fb2_rd_fly',  type: 'straight', sets: 3, min: 12, max: 15, order: 7, intensifier: 'Slow 3s eccentric + peak squeeze' },
+    { day: 'full_body_2', ex: 'Suitcase Carry',                 sid: 'fb2_suitcase', type: 'straight', sets: 2, min: 20, max: 20, order: 8, note: '/side, walking (anti-rotation core)' },
+
+    // FULL BODY 3 — DB Chest · Vertical Pull · Quads + Posterior
+    { day: 'full_body_3', ex: 'DB 45 Degree Incline',           sid: 'fb3_db_inc',  type: 'straight', sets: 3, min: 10, max: 12, order: 1 },
+    { day: 'full_body_3', ex: 'Nautilus Lat Pulldown underhand', sid: 'fb3_pd_under', type: 'straight', sets: 3, min: 8,  max: 12, order: 2 },
+    { day: 'full_body_3', ex: 'Nautilus PL Seated Press',       sid: 'fb3_seat_pr', type: 'straight', sets: 3, min: 8,  max: 10, order: 3, note: '/side' },
+    { day: 'full_body_3', ex: 'Hammer Curls',                   sid: 'fb3_hammer',  type: 'straight', sets: 3, min: 12, max: 12, order: 4 },
+    { day: 'full_body_3', ex: 'Cable Rope Overhead Extension',  sid: 'fb3_rope_oh', type: 'straight', sets: 3, min: 12, max: 15, order: 5 },
+    { day: 'full_body_3', ex: 'Bodybuilder Squat Machine',      sid: 'fb3_squat',   type: 'straight', sets: 3, min: 8,  max: 10, order: 6, note: '/side' },
+    { day: 'full_body_3', ex: 'Nautilus Hamstring Curls',       sid: 'fb3_ham',     type: 'straight', sets: 3, min: 12, max: 15, order: 7, intensifier: 'Slow 3s eccentric + 1s squeeze' },
+    { day: 'full_body_3', ex: 'Hip Thrust',                     sid: 'fb3_thrust',  type: 'straight', sets: 3, min: 8,  max: 12, order: 8, intensifier: '2s pause + squeeze at top', note: 'optional — skip if legs are toast from a match' },
 
     // DAY 5 — 7 longevity movements (single-set, notes-only; intermediate-tier defaults).
     // Source: "I'm 46. These are 7 exercises I use to feel like I'm 26." — https://youtu.be/utBzlEiX-zA
@@ -265,6 +302,36 @@ https://youtu.be/utBzlEiX-zA` },
     { day: 'pull_b', ex: 'Hip Thrust',                         w: 95,   sets: 3, min: 8,  max: 12, rir: 2, type: 'straight' },
     { day: 'pull_b', ex: 'Suitcase Carry',                     w: 40,   sets: 2, min: 20, max: 20, rir: 2, type: 'straight' },
     { day: 'pull_b', ex: 'Kettlebell Swing',                   w: 35,   sets: 3, min: 15, max: 20, rir: 1, type: 'straight' },
+
+    // FULL BODY 1
+    { day: 'full_body_1', ex: 'Nautilus PL Incline Bench',      w: 45,   sets: 4, min: 8,  max: 8,  rir: 2, type: 'straight' },
+    { day: 'full_body_1', ex: 'Nautilus Lat Pulldown overhand', w: 121,  sets: 3, min: 8,  max: 10, rir: 2, type: 'straight' },
+    { day: 'full_body_1', ex: 'Nautilus PL Seated Press',       w: 60,   sets: 3, min: 10, max: 10, rir: 2, type: 'straight' },
+    { day: 'full_body_1', ex: 'Cable Curls',                    w: 43,   sets: 3, min: 12, max: 15, rir: 1, type: 'straight' },
+    { day: 'full_body_1', ex: 'Cable Rope Overhead Extension',  w: 45,   sets: 3, min: 12, max: 12, rir: 2, type: 'straight' },
+    { day: 'full_body_1', ex: 'Nautilus Xpload Leg Press Incline', w: 90, sets: 3, min: 10, max: 10, rir: 2, type: 'straight' },
+    { day: 'full_body_1', ex: 'Cable Face Pulls',               w: 58.5, sets: 3, min: 15, max: 20, rir: 1, type: 'straight' },
+    { day: 'full_body_1', ex: 'Kettlebell Swing',               w: 35,   sets: 3, min: 15, max: 20, rir: 1, type: 'straight' },
+
+    // FULL BODY 2
+    { day: 'full_body_2', ex: 'Nautilus PL Flat Bench',         w: 60,   sets: 4, min: 8,  max: 10, rir: 2, type: 'straight' },
+    { day: 'full_body_2', ex: 'Nautilus Chest Supported Row High', w: 50, sets: 3, min: 10, max: 15, rir: 2, type: 'straight' },
+    { day: 'full_body_2', ex: 'Arsenal Lateral Raises',         w: 40,   sets: 3, min: 12, max: 15, rir: 1, type: 'straight' },
+    { day: 'full_body_2', ex: 'Incline DB Curls',               w: 20,   sets: 3, min: 12, max: 15, rir: 1, type: 'straight' },
+    { day: 'full_body_2', ex: 'Cable Rope Overhead Extension',  w: 45,   sets: 3, min: 12, max: 15, rir: 1, type: 'straight' },
+    { day: 'full_body_2', ex: 'Romanian Deadlift',             w: 135,  sets: 3, min: 8,  max: 8,  rir: 2, type: 'straight' },
+    { day: 'full_body_2', ex: 'Cable Rear Delt Fly',            w: 30,   sets: 3, min: 12, max: 15, rir: 1, type: 'straight' },
+    { day: 'full_body_2', ex: 'Suitcase Carry',                 w: 40,   sets: 2, min: 20, max: 20, rir: 2, type: 'straight' },
+
+    // FULL BODY 3
+    { day: 'full_body_3', ex: 'DB 45 Degree Incline',           w: 55,   sets: 3, min: 10, max: 12, rir: 2, type: 'straight' },
+    { day: 'full_body_3', ex: 'Nautilus Lat Pulldown underhand', w: 121, sets: 3, min: 8,  max: 12, rir: 2, type: 'straight' },
+    { day: 'full_body_3', ex: 'Nautilus PL Seated Press',       w: 60,   sets: 3, min: 8,  max: 10, rir: 2, type: 'straight' },
+    { day: 'full_body_3', ex: 'Hammer Curls',                   w: 35,   sets: 3, min: 12, max: 12, rir: 2, type: 'straight' },
+    { day: 'full_body_3', ex: 'Cable Rope Overhead Extension',  w: 45,   sets: 3, min: 12, max: 15, rir: 1, type: 'straight' },
+    { day: 'full_body_3', ex: 'Bodybuilder Squat Machine',      w: 90,   sets: 3, min: 8,  max: 10, rir: 2, type: 'straight' },
+    { day: 'full_body_3', ex: 'Nautilus Hamstring Curls',       w: 80,   sets: 3, min: 12, max: 15, rir: 1, type: 'straight' },
+    { day: 'full_body_3', ex: 'Hip Thrust',                     w: 95,   sets: 3, min: 8,  max: 12, rir: 2, type: 'straight' },
   ];
 
   const targetRows = cycle4Targets
