@@ -13,10 +13,14 @@
 -- at their verified live current-week weights (read 2026-07-24):
 --
 --   Incline Bench 80    Flat Bench 80        Pulldown overhand 151
---   DB 45 Incline 60    Seated Press 75      Pulldown underhand 136
---   Lateral Raises 65   Rope OH Ext 49       Seated Row V-bar 136
---   Bulgarian Split 10  Face Pulls 44        Cable Curls 58.5
---   Hammer Curls 50     Incline DB Curls 25  RDL 145   Hip Thrust 85
+--   DB 45 Incline 60    DB Flat Bench 70     Pulldown underhand 136
+--   Seated Press 75     Lateral Raises 65    Seated Row V-bar 136
+--   Rope OH Ext 49      Face Pulls 44        Chest Supp Row High 55
+--   Bulgarian Split 10  Cable Curls 58.5     Hammer Curls 50
+--   Incline DB Curls 25 RDL 145              Hip Thrust 85
+--
+-- All 27 slots are covered: every lift on the 4-day split appears at least
+-- once across the three days. Nine exercises per day.
 --
 -- Weights are written explicitly rather than derived, because the 07-20
 -- migration's live-lookup silently fell back to hardcoded values for any
@@ -25,12 +29,12 @@
 --
 -- Bodyweight / untracked movements (Dips, Chabbles Workout, Lateral Band
 -- Walks, Leg Extensions) get no progression_targets row, matching how they
--- are stored on the live push/pull days.
+-- are stored on the live push/pull days. Pull-up carries weight 0, as on Pull A.
 --
 -- After this runs, app-side forward-sync (mirrorWeightsToSharedDays) keeps
 -- every shared lift in step across the 3-day and 4-day splits automatically.
 --
--- Idempotent. Re-runnable.
+-- Idempotent. Re-runnable. Only touches full_body_1/2/3.
 
 -- ============================================================
 -- 1. Clear the existing Full Body rows (clean replace).
@@ -54,7 +58,7 @@ update split_days set subtitle = 'Incline · Vertical Pull · Quads'
  where user_id = (select id from auth.users where email = 'chadleydean@gmail.com') and day_key = 'full_body_1';
 update split_days set subtitle = 'Flat · Horizontal Pull · Posterior Chain'
  where user_id = (select id from auth.users where email = 'chadleydean@gmail.com') and day_key = 'full_body_2';
-update split_days set subtitle = 'DB Chest · Vertical Pull · Glutes'
+update split_days set subtitle = 'DB Chest · Full Back · Glutes'
  where user_id = (select id from auth.users where email = 'chadleydean@gmail.com') and day_key = 'full_body_3';
 
 -- ============================================================
@@ -69,33 +73,36 @@ select sd.id, ex.id, v.short_id, v.set_type, v.sets,
 from (values
   -- ── FULL BODY 1 — Incline · Vertical Pull · Quads ──────────────────────
   ('full_body_1','fb1_inc',     'Nautilus PL Incline Bench',      'straight', 4::int, 8::int,  8::int,  1::int, '/side'::text, null::text),
-  ('full_body_1','fb1_pd_over', 'Nautilus Lat Pulldown overhand', 'straight', 3, 8,  10, 2, 'or close-grip V-handle for rear delt bias', null),
-  ('full_body_1','fb1_seat_pr', 'Nautilus PL Seated Press',       'straight', 3, 10, 10, 3, '/side', null),
-  ('full_body_1','fb1_fp',      'Cable Face Pulls',               'straight', 3, 15, 20, 4, null, '1s pause + squeeze at peak'),
-  ('full_body_1','fb1_cc',      'Cable Curls',                    'straight', 3, 12, 15, 5, null, 'Slow 3s eccentric + peak squeeze'),
-  ('full_body_1','fb1_rope_oh', 'Cable Rope Overhead Extension',  'straight', 3, 12, 12, 6, null, null),
-  ('full_body_1','fb1_bulg',    'Bulgarian Split Squat',          'straight', 3, 8,  10, 7, '/leg. Rear foot elevated on bench. Front shin vertical, drop straight down. Bodyweight to start, add DBs as it gets easy.', null),
-  ('full_body_1','fb1_leg_ext', 'Nautilus Leg Extensions',        'chipper',  null, 60, 60, 8, 'controlled reps only — no kicking the stack up', 'Slow 3s eccentric + 1s squeeze at top'),
+  ('full_body_1','fb1_pullup',  'Pull-up',                        'straight', 3, 5,  10, 2, 'bodyweight (+/- assist)', null),
+  ('full_body_1','fb1_pd_over', 'Nautilus Lat Pulldown overhand', 'straight', 3, 8,  10, 3, 'or close-grip V-handle for rear delt bias', null),
+  ('full_body_1','fb1_seat_pr', 'Nautilus PL Seated Press',       'straight', 3, 10, 10, 4, '/side', null),
+  ('full_body_1','fb1_fp',      'Cable Face Pulls',               'straight', 3, 15, 20, 5, null, '1s pause + squeeze at peak'),
+  ('full_body_1','fb1_cc',      'Cable Curls',                    'straight', 3, 12, 15, 6, null, 'Slow 3s eccentric + peak squeeze'),
+  ('full_body_1','fb1_rope_oh', 'Cable Rope Overhead Extension',  'straight', 3, 12, 12, 7, null, null),
+  ('full_body_1','fb1_bulg',    'Bulgarian Split Squat',          'straight', 3, 8,  10, 8, '/leg. Rear foot elevated on bench. Front shin vertical, drop straight down. Bodyweight to start, add DBs as it gets easy.', null),
+  ('full_body_1','fb1_leg_ext', 'Nautilus Leg Extensions',        'chipper',  null, 60, 60, 9, 'controlled reps only — no kicking the stack up', 'Slow 3s eccentric + 1s squeeze at top'),
 
   -- ── FULL BODY 2 — Flat · Horizontal Pull · Posterior Chain ─────────────
   ('full_body_2','fb2_flat',     'Nautilus PL Flat Bench',        'straight', 4, 8,  10, 1, '/side', null),
-  ('full_body_2','fb2_row_vbar', 'Nautilus Seated Row V-bar',     'straight', 3, 10, 12, 2, null, null),
-  ('full_body_2','fb2_lat_r',    'Arsenal Lateral Raises',        'straight', 3, 12, 15, 3, null, 'Slow 3s eccentric + 1s pause at top'),
-  ('full_body_2','fb2_inc_curl', 'Incline DB Curls',              'straight', 3, 12, 15, 4, null, 'Slow 3s eccentric (deep stretch)'),
-  ('full_body_2','fb2_dips',     'Dips with Knee Raise',          'straight', 3, 8,  12, 5, null, null),
-  ('full_body_2','fb2_rdl',      'Romanian Deadlift',             'straight', 3, 8,  8,  6, null, null),
-  ('full_body_2','fb2_thrust',   'Hip Thrust',                    'chipper',  null, 50, 50, 7, 'full lockout every rep — no half reps as fatigue builds', '2s pause + squeeze at top'),
-  ('full_body_2','fb2_chabbles', 'Chabbles Workout',              'straight', 3, 10, 10, 8, null, null),
+  ('full_body_2','fb2_db_flat',  'DB Flat Bench',                 'straight', 3, 10, 12, 2, null, null),
+  ('full_body_2','fb2_row_vbar', 'Nautilus Seated Row V-bar',     'straight', 3, 10, 12, 3, null, null),
+  ('full_body_2','fb2_lat_r',    'Arsenal Lateral Raises',        'straight', 3, 12, 15, 4, null, 'Slow 3s eccentric + 1s pause at top'),
+  ('full_body_2','fb2_inc_curl', 'Incline DB Curls',              'straight', 3, 12, 15, 5, null, 'Slow 3s eccentric (deep stretch)'),
+  ('full_body_2','fb2_dips',     'Dips with Knee Raise',          'straight', 3, 8,  12, 6, null, null),
+  ('full_body_2','fb2_rdl',      'Romanian Deadlift',             'straight', 3, 8,  8,  7, null, null),
+  ('full_body_2','fb2_thrust',   'Hip Thrust',                    'chipper',  null, 50, 50, 8, 'full lockout every rep — no half reps as fatigue builds', '2s pause + squeeze at top'),
+  ('full_body_2','fb2_chabbles', 'Chabbles Workout',              'straight', 3, 10, 10, 9, null, null),
 
-  -- ── FULL BODY 3 — DB Chest · Vertical Pull · Glutes ────────────────────
-  ('full_body_3','fb3_db_inc',   'DB 45 Degree Incline',           'straight', 3, 10, 12, 1, null, null),
-  ('full_body_3','fb3_pd_under', 'Nautilus Lat Pulldown underhand','straight', 3, 8,  12, 2, null, null),
-  ('full_body_3','fb3_seat_pr',  'Nautilus PL Seated Press',       'straight', 3, 8,  10, 3, '/side', null),
-  ('full_body_3','fb3_fp',       'Cable Face Pulls',               'straight', 3, 15, 20, 4, null, '1s pause + squeeze at peak'),
-  ('full_body_3','fb3_hammer',   'Hammer Curls',                   'straight', 3, 12, 12, 5, null, null),
-  ('full_body_3','fb3_rope_oh',  'Cable Rope Overhead Extension',  'straight', 3, 12, 15, 6, null, 'Slow 3s eccentric (long-head stretch)'),
-  ('full_body_3','fb3_bulg',     'Bulgarian Split Squat',          'straight', 3, 8,  8,  7, '/leg. Rear foot elevated on bench. Front shin vertical, drop straight down. Bodyweight to start, add DBs as it gets easy.', null),
-  ('full_body_3','fb3_band_walk','Lateral Band Walks',             'straight', 3, 15, 15, 8, '/side. Band above knees or around ankles. Quarter squat, small controlled steps. Knees push OUT into the band the whole time.', null)
+  -- ── FULL BODY 3 — DB Chest · Full Back · Glutes ────────────────────────
+  ('full_body_3','fb3_db_inc',   'DB 45 Degree Incline',            'straight', 3, 10, 12, 1, null, null),
+  ('full_body_3','fb3_pd_under', 'Nautilus Lat Pulldown underhand', 'straight', 3, 8,  12, 2, null, null),
+  ('full_body_3','fb3_row_high', 'Nautilus Chest Supported Row High','straight', 3, 10, 15, 3, null, null),
+  ('full_body_3','fb3_seat_pr',  'Nautilus PL Seated Press',        'straight', 3, 8,  10, 4, '/side', null),
+  ('full_body_3','fb3_fp',       'Cable Face Pulls',                'straight', 3, 15, 20, 5, null, '1s pause + squeeze at peak'),
+  ('full_body_3','fb3_hammer',   'Hammer Curls',                    'straight', 3, 12, 12, 6, null, null),
+  ('full_body_3','fb3_rope_oh',  'Cable Rope Overhead Extension',   'straight', 3, 12, 15, 7, null, 'Slow 3s eccentric (long-head stretch)'),
+  ('full_body_3','fb3_bulg',     'Bulgarian Split Squat',           'straight', 3, 8,  8,  8, '/leg. Rear foot elevated on bench. Front shin vertical, drop straight down. Bodyweight to start, add DBs as it gets easy.', null),
+  ('full_body_3','fb3_band_walk','Lateral Band Walks',              'straight', 3, 15, 15, 9, '/side. Band above knees or around ankles. Quarter squat, small controlled steps. Knees push OUT into the band the whole time.', null)
 ) as v(day_key, short_id, ex_name, set_type, sets, rmin, rmax, ord, note, intensifier)
 join split_days sd
   on sd.day_key = v.day_key
@@ -124,6 +131,7 @@ select u.id, ex.id, sd.id, sd.current_week, 1,
 from (values
   -- FULL BODY 1
   ('full_body_1','Nautilus PL Incline Bench',      80::numeric, 4::int,   8::int,  8::int,  2::int, 'straight'::text),
+  ('full_body_1','Pull-up',                        0,   3,    5,  10, 2, 'straight'),
   ('full_body_1','Nautilus Lat Pulldown overhand', 151, 3,    8,  10, 2, 'straight'),
   ('full_body_1','Nautilus PL Seated Press',       75,  3,    10, 10, 2, 'straight'),
   ('full_body_1','Cable Face Pulls',               44,  3,    15, 20, 1, 'straight'),
@@ -132,19 +140,21 @@ from (values
   ('full_body_1','Bulgarian Split Squat',          10,  3,    8,  10, 2, 'straight'),
   -- FULL BODY 2
   ('full_body_2','Nautilus PL Flat Bench',         80,  4,    8,  10, 2, 'straight'),
+  ('full_body_2','DB Flat Bench',                  70,  3,    10, 12, 2, 'straight'),
   ('full_body_2','Nautilus Seated Row V-bar',      136, 3,    10, 12, 2, 'straight'),
   ('full_body_2','Arsenal Lateral Raises',         65,  3,    12, 15, 1, 'straight'),
   ('full_body_2','Incline DB Curls',               25,  3,    12, 15, 1, 'straight'),
   ('full_body_2','Romanian Deadlift',              145, 3,    8,  8,  2, 'straight'),
   ('full_body_2','Hip Thrust',                     85,  null, 50, 50, 2, 'chipper'),
   -- FULL BODY 3
-  ('full_body_3','DB 45 Degree Incline',           60,  3,    10, 12, 2, 'straight'),
-  ('full_body_3','Nautilus Lat Pulldown underhand',136, 3,    8,  12, 2, 'straight'),
-  ('full_body_3','Nautilus PL Seated Press',       75,  3,    8,  10, 2, 'straight'),
-  ('full_body_3','Cable Face Pulls',               44,  3,    15, 20, 1, 'straight'),
-  ('full_body_3','Hammer Curls',                   50,  3,    12, 12, 2, 'straight'),
-  ('full_body_3','Cable Rope Overhead Extension',  49,  3,    12, 15, 1, 'straight'),
-  ('full_body_3','Bulgarian Split Squat',          10,  3,    8,  8,  2, 'straight')
+  ('full_body_3','DB 45 Degree Incline',            60,  3,    10, 12, 2, 'straight'),
+  ('full_body_3','Nautilus Lat Pulldown underhand', 136, 3,    8,  12, 2, 'straight'),
+  ('full_body_3','Nautilus Chest Supported Row High',55, 3,    10, 15, 2, 'straight'),
+  ('full_body_3','Nautilus PL Seated Press',        75,  3,    8,  10, 2, 'straight'),
+  ('full_body_3','Cable Face Pulls',                44,  3,    15, 20, 1, 'straight'),
+  ('full_body_3','Hammer Curls',                    50,  3,    12, 12, 2, 'straight'),
+  ('full_body_3','Cable Rope Overhead Extension',   49,  3,    12, 15, 1, 'straight'),
+  ('full_body_3','Bulgarian Split Squat',           10,  3,    8,  8,  2, 'straight')
 ) as v(day_key, ex_name, w, sets, rmin, rmax, rir, set_type)
 cross join (select id from auth.users where email = 'chadleydean@gmail.com') u
 join split_days sd on sd.day_key = v.day_key and sd.user_id = u.id
