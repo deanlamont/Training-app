@@ -440,7 +440,10 @@ function HomeScreen({ split, progress, history, challengeStats, onStart, onEdit,
               <div style={{ fontSize: 23, fontWeight: 800, marginBottom: 4, color: C.text }}>{d.label}</div>
               <div style={{ fontSize: 15, color: C.sub }}>{d.sub}</div>
               <div style={{ marginTop: 14, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                <div style={{ fontSize: 12, color: C.sub, fontWeight: 800, letterSpacing: 0.5, background: C.innerBg, padding: '5px 10px', borderRadius: 999 }}>{d.exercises.length} EX</div>
+                <div style={{ fontSize: 12, color: C.sub, fontWeight: 800, letterSpacing: 0.5, background: C.innerBg, padding: '5px 10px', borderRadius: 999 }}>{d.exercises.filter(e => !e.optional).length} EX</div>
+                {d.exercises.some(e => e.optional) && (
+                  <div style={{ fontSize: 12, color: C.muted, fontWeight: 800, letterSpacing: 0.5, border: `1px dashed ${C.border}`, padding: '4px 10px', borderRadius: 999 }}>+{d.exercises.filter(e => e.optional).length} OPT</div>
+                )}
                 <div style={{ fontSize: 12, color: C.acc, fontWeight: 800, letterSpacing: 0.5, background: C.accLight, padding: '5px 10px', borderRadius: 999 }}>CYCLE {cycle}</div>
               </div>
             </button>
@@ -549,10 +552,10 @@ function PeekModal({ split, currentDayKey, onClose }) {
                 <span style={{ color: C.muted, fontSize: 15, fontWeight: 'bold' }}>{i + 1}</span>
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 15, fontWeight: 600, color: C.text }}>{ex.name}</div>
+                <div style={{ fontSize: 15, fontWeight: 600, color: ex.optional ? C.sub : C.text }}>{ex.name}</div>
                 <div style={{ fontSize: 15, color: C.sub, marginTop: 2 }}>{targetStr(ex)}</div>
               </div>
-              <div style={{ fontSize: 15, color: C.blue, letterSpacing: 1, fontWeight: 'bold' }}>SETS</div>
+              <div style={{ fontSize: 15, color: ex.optional ? C.muted : C.blue, letterSpacing: 1, fontWeight: 'bold' }}>{ex.optional ? 'OPT' : 'SETS'}</div>
             </div>
           ))}
         </div>
@@ -684,6 +687,9 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
               {isChipper && (
                 <span style={{ fontSize: 11, fontWeight: 800, color: C.orange, border: `1px solid ${C.orange}`, borderRadius: 999, padding: '2px 8px', marginLeft: 8, letterSpacing: 1, verticalAlign: 'middle' }}>CHIPPER</span>
               )}
+              {ex.optional && (
+                <span style={{ fontSize: 11, fontWeight: 800, color: C.muted, border: `1px dashed ${C.muted}`, borderRadius: 999, padding: '2px 8px', marginLeft: 8, letterSpacing: 1, verticalAlign: 'middle' }}>OPTIONAL</span>
+              )}
             </div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginTop: 5, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 21, fontWeight: 800, color: C.text, fontFamily: 'monospace' }}>
@@ -711,7 +717,7 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
             ) : skipped ? (
               <div style={{ fontSize: 13, color: C.muted, fontWeight: 700, letterSpacing: 1 }}>SKIPPED</div>
             ) : (
-              <div style={{ fontSize: 13, color: C.blue, fontWeight: 800, letterSpacing: 1, border: `1px solid ${C.blue}`, padding: '7px 12px', borderRadius: 999 }}>{isChipper ? 'CHIP' : 'SETS'}</div>
+              <div style={{ fontSize: 13, color: ex.optional ? C.muted : C.blue, fontWeight: 800, letterSpacing: 1, border: `1px ${ex.optional ? 'dashed' : 'solid'} ${ex.optional ? C.muted : C.blue}`, padding: '7px 12px', borderRadius: 999 }}>{ex.optional ? 'IF TIME' : isChipper ? 'CHIP' : 'SETS'}</div>
             )}
           </div>
         </div>
@@ -724,7 +730,12 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
     <div style={{ background: C.surface, border: `1px solid ${C.acc}`, borderLeft: `4px solid ${C.acc}`, borderRadius: 16, padding: 18, marginBottom: 10 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 19, fontWeight: 800, color: C.text }}>{ex.name}</div>
+          <div style={{ fontSize: 19, fontWeight: 800, color: C.text }}>
+            {ex.name}
+            {ex.optional && (
+              <span style={{ fontSize: 11, fontWeight: 800, color: C.muted, border: `1px dashed ${C.muted}`, borderRadius: 999, padding: '2px 8px', marginLeft: 8, letterSpacing: 1, verticalAlign: 'middle' }}>OPTIONAL</span>
+            )}
+          </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 5, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 13, color: C.sub, letterSpacing: 0.5 }}>{isChipper ? 'CHIPPER' : 'TARGET'}</span>
             <span style={{ fontSize: 19, fontWeight: 800, color: C.acc, fontFamily: 'monospace' }}>{fmt(ex.w)}lb</span>
@@ -858,7 +869,7 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
       {!hasAnyLogs && !skipped && (
         <button onClick={onSkip}
           style={{ width: '100%', padding: 12, background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 10, color: C.muted, fontSize: 13, fontWeight: 700, letterSpacing: 1, cursor: 'pointer', fontFamily: 'inherit' }}>
-          SKIP THIS EXERCISE
+          {ex.optional ? 'NOT TODAY — SKIP' : 'SKIP THIS EXERCISE'}
         </button>
       )}
     </div>
@@ -880,7 +891,13 @@ function SessionScreen({
   const [showPeek, setShowPeek] = useState(false)
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false)
 
-  const loggedCount = sessionExercises.filter(ex => (sessionLogs[ex.id] || []).some(s => s.type !== 'swap' && s.type !== 'challenge')).length
+  // Optional exercises are in the plan but don't gate completion — the progress
+  // bar tracks the core work only, so skipping them still reads as a full day.
+  const isLogged = ex => (sessionLogs[ex.id] || []).some(s => s.type !== 'swap' && s.type !== 'challenge')
+  const coreExercises = sessionExercises.filter(ex => !ex.optional)
+  const coreLogged = coreExercises.filter(isLogged).length
+  const optionalLogged = sessionExercises.filter(ex => ex.optional && isLogged(ex)).length
+  const loggedCount = coreLogged + optionalLogged
   const challengesDone = Object.values(sessionLogs).flat().filter(s => s?.type === 'challenge').length
 
   function logSet(exerciseId, newSet) {
@@ -919,7 +936,8 @@ function SessionScreen({
             style={{ position: 'relative', background: C.surface, borderRadius: 20, padding: '28px 24px', width: '100%', maxWidth: 360, border: `0.5px solid ${C.border}` }}>
             <div style={{ fontSize: 22, fontWeight: 800, color: C.text, marginBottom: 8 }}>Finish session?</div>
             <div style={{ fontSize: 15, color: C.sub, lineHeight: 1.5, marginBottom: 24 }}>
-              You logged {loggedCount} of {sessionExercises.length} exercises. We'll calculate next week's targets.
+              You logged {coreLogged} of {coreExercises.length} core exercises
+              {optionalLogged > 0 ? ` plus ${optionalLogged} optional` : ''}. We'll calculate next week's targets.
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={() => setShowCompleteConfirm(false)}
@@ -956,12 +974,14 @@ function SessionScreen({
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 18px 12px' }}>
           <div style={{ flex: 1, height: 8, background: C.innerBg, borderRadius: 4, overflow: 'hidden', border: `1px solid ${C.border}` }}>
             <div style={{
-              height: '100%', width: `${sessionExercises.length ? Math.round((loggedCount / sessionExercises.length) * 100) : 0}%`,
+              height: '100%', width: `${coreExercises.length ? Math.round((coreLogged / coreExercises.length) * 100) : 0}%`,
               background: `linear-gradient(90deg, ${C.blue}, ${C.pink})`,
               boxShadow: `0 0 8px ${C.pink}`, transition: 'width 0.3s', borderRadius: 4,
             }} />
           </div>
-          <div style={{ fontSize: 15, color: C.text, fontFamily: 'monospace', fontWeight: 800, flexShrink: 0 }}>{loggedCount}/{sessionExercises.length}</div>
+          <div style={{ fontSize: 15, color: C.text, fontFamily: 'monospace', fontWeight: 800, flexShrink: 0 }}>
+            {coreLogged}/{coreExercises.length}{optionalLogged > 0 && <span style={{ color: C.muted }}>+{optionalLogged}</span>}
+          </div>
           {challengesDone > 0 && (
             <div style={{ fontSize: 13, color: C.blue, fontWeight: 800, flexShrink: 0, border: `1px dashed ${C.blue}`, borderRadius: 999, padding: '3px 10px' }}>
               🎲 {challengesDone}
@@ -1138,7 +1158,12 @@ function EditScreen({ split, onSave, onBack }) {
                       {!isEditing ? (
                         <div onClick={() => setEditingIdx(`${day.key}-${i}`)} style={{ cursor: 'pointer' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{ex.name}</div>
+                            <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>
+                              {ex.name}
+                              {ex.optional && (
+                                <span style={{ fontSize: 10, fontWeight: 800, color: C.muted, border: `1px dashed ${C.muted}`, borderRadius: 999, padding: '2px 7px', marginLeft: 7, letterSpacing: 1, verticalAlign: 'middle' }}>OPTIONAL</span>
+                              )}
+                            </div>
                             <div style={{ fontSize: 13, color: C.blue, fontWeight: 'bold', letterSpacing: 1 }}>SETS</div>
                           </div>
                           <div style={{ fontSize: 15, color: C.sub, marginTop: 3 }}>{targetStr(ex)}</div>
@@ -1178,6 +1203,10 @@ function EditScreen({ split, onSave, onBack }) {
                             <div style={{ fontSize: 13, color: C.sub, marginBottom: 5, letterSpacing: 1, fontWeight: 700 }}>INTENSIFIER (FINAL SET)</div>
                             <input value={ex.intensifier || ''} placeholder="e.g. Slow 3s eccentric + peak squeeze" onChange={e => updateExercise(day.key, i, 'intensifier', e.target.value || undefined)} style={inputStyle} />
                           </div>
+                          <button onClick={() => updateExercise(day.key, i, 'optional', !ex.optional)}
+                            style={{ padding: '10px 0', background: ex.optional ? C.innerBg : 'none', border: `0.5px ${ex.optional ? 'dashed' : 'solid'} ${C.border}`, borderRadius: 8, color: ex.optional ? C.text : C.sub, fontSize: 13, fontWeight: 'bold', letterSpacing: 1, cursor: 'pointer', fontFamily: 'inherit' }}>
+                            {ex.optional ? '✓ OPTIONAL — DO IF TIME' : 'MARK OPTIONAL'}
+                          </button>
                           <div style={{ display: 'flex', gap: 8 }}>
                             <button onClick={() => moveExercise(day.key, i, -1)} disabled={i === 0}
                               style={{ flex: 1, padding: '8px 0', background: C.bg, border: `0.5px solid ${C.border}`, borderRadius: 8, color: i === 0 ? C.border : C.sub, fontSize: 13, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>UP</button>

@@ -56,12 +56,18 @@ create table if not exists split_day_exercises (
   note text,
   short_id text,
   intensifier text,
+  optional boolean not null default false,
   created_at timestamptz default now()
 );
 
--- Backfill column for pre-existing tables created before `intensifier` was added.
+-- Backfill columns for pre-existing tables created before these were added.
 alter table split_day_exercises
   add column if not exists intensifier text;
+
+-- `optional` exercises stay in the plan but don't count toward session
+-- completion — do them when there's time, skip them without penalty.
+alter table split_day_exercises
+  add column if not exists optional boolean not null default false;
 
 -- Required by seedUserData's upsert onConflict='split_day_id,short_id'.
 do $$ begin
