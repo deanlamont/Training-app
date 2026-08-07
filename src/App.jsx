@@ -16,8 +16,8 @@ import {
   markSessionComplete,
   fetchMostRecentSessionAny,
   fetchPreviousSessionForDay,
-  loadChallengeStats,
 } from './utils/sessionSync'
+import { loadWeeklyVolume, weekLabel } from './utils/weeklyVolume'
 import { computeNextTargets } from './utils/progression'
 import { subscribe as subscribeQueue, getStatus as getQueueStatus, clearFailed } from './utils/writeQueue'
 
@@ -256,6 +256,13 @@ function fmt(n) {
   return Number.isInteger(n) ? String(n) : parseFloat(n.toFixed(1)).toString()
 }
 
+/** "AUG 2" — uppercase to match the pill styling it sits in. */
+function shortDate(iso) {
+  return new Date(iso)
+    .toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    .toUpperCase()
+}
+
 function targetStr(ex) {
   if (ex.type === 'chipper') {
     return `CHIPPER · ${ex.max ?? ex.min} total @ ${fmt(ex.w)}lb`
@@ -337,7 +344,13 @@ function formatLastSets(lastSets) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Home Screen
 // ═══════════════════════════════════════════════════════════════════════════
-function HomeScreen({ split, progress, history, challengeStats, onStart, onEdit, hasActiveSession, activeSessionKey, onResumeSession, onRecover, onMobility, onHomeWorkout, onLibrary, userEmail, onSignOut }) {
+function HomeScreen({ split, progress, history, weeklyVolume, onStart, onEdit, hasActiveSession, activeSessionKey, onResumeSession, onRecover, onMobility, onHomeWorkout, onLibrary, userEmail, onSignOut }) {
+  // Most recent completed session per day — replaces the cycle counter, which
+  // had drifted badly out of sync between days and told the user nothing.
+  const lastByDay = {}
+  for (const h of history ?? []) {
+    if (h.dayKey && !lastByDay[h.dayKey]) lastByDay[h.dayKey] = h.date
+  }
   const days = Object.values(split)
   const mainDays = days.filter(d => !REFERENCE_DAY_KEYS.has(d.key))
   const optDay = days.find(d => d.key === 'day_5')
@@ -368,28 +381,34 @@ function HomeScreen({ split, progress, history, challengeStats, onStart, onEdit,
         )}
       </div>
 
-      {/* Challenge scoreboard — the game layer. Always visible so a zero week stings. */}
-      <div style={{ marginBottom: 20, background: C.surface, border: `1px solid ${C.pink}`, borderRadius: 16, padding: '14px 16px', boxShadow: '0 0 18px rgba(255,46,146,0.18)' }}>
+      {/* Weekly volume board — hard sets logged this Mon-Sun week against the
+          per-muscle targets. The number that actually drives programming. */}
+      <div style={{ marginBottom: 20, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: '14px 16px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
-          <div style={{ fontSize: 13, color: C.pink, letterSpacing: 2, fontWeight: 800 }}>🎲 CHALLENGE SCOREBOARD</div>
-          <div style={{ fontSize: 11, color: C.muted, letterSpacing: 1 }}>LAST 7 DAYS</div>
+          <div style={{ fontSize: 13, color: C.acc, letterSpacing: 2, fontWeight: 800 }}>WEEKLY VOLUME</div>
+          <div style={{ fontSize: 11, color: C.muted, letterSpacing: 1 }}>{weekLabel()}</div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-          {[
-            { n: challengeStats?.weekAttempted ?? 0, label: 'ATTEMPTED', color: C.teal },
-            { n: challengeStats?.weekBeaten ?? 0, label: 'BEATEN', color: C.yellow },
-            { n: challengeStats?.streak ?? 0, label: 'STREAK 🔥', color: C.pink },
-          ].map(s => (
-            <div key={s.label} style={{ background: C.innerBg, borderRadius: 12, padding: '12px 8px', textAlign: 'center' }}>
-              <div style={{ fontSize: 30, fontWeight: 900, color: s.color, fontFamily: 'monospace', lineHeight: 1 }}>{s.n}</div>
-              <div style={{ fontSize: 10, color: C.sub, letterSpacing: 1.5, fontWeight: 700, marginTop: 6 }}>{s.label}</div>
-            </div>
-          ))}
-        </div>
-        {(challengeStats?.totalAttempted ?? 0) > 0 && (
-          <div style={{ fontSize: 12, color: C.muted, marginTop: 10, textAlign: 'center', letterSpacing: 0.5 }}>
-            all-time: {challengeStats.totalBeaten}/{challengeStats.totalAttempted} beaten
+        {weeklyVolume ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+            {weeklyVolume.map(m => {
+              const pct = m.target ? Math.min(100, Math.round((m.done / m.target) * 100)) : 0
+              // Under target reads dim, in range reads accent, past target reads amber.
+              const color = m.done >= m.target ? (m.done > m.target * 1.34 ? C.orange : C.acc) : C.blue
+              return (
+                <div key={m.key} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 76, flexShrink: 0, fontSize: 12, color: C.sub, fontWeight: 700 }}>{m.label}</div>
+                  <div style={{ flex: 1, height: 7, background: C.innerBg, borderRadius: 4, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 4, transition: 'width 0.3s' }} />
+                  </div>
+                  <div style={{ width: 44, flexShrink: 0, textAlign: 'right', fontSize: 13, fontFamily: 'monospace', fontWeight: 800, color: m.done >= m.target ? C.text : C.muted }}>
+                    {m.done}/{m.target}
+                  </div>
+                </div>
+              )
+            })}
           </div>
+        ) : (
+          <div style={{ fontSize: 13, color: C.muted, textAlign: 'center', padding: '8px 0' }}>loading…</div>
         )}
       </div>
 
@@ -433,7 +452,6 @@ function HomeScreen({ split, progress, history, challengeStats, onStart, onEdit,
       <div style={{ fontSize: 15, color: C.muted, letterSpacing: 2, marginBottom: 12, fontWeight: 'bold' }}>SELECT TODAY'S SESSION</div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
         {mainDays.map(d => {
-          const cycle = progress[d.key]?.week ?? 3
           return (
             <button key={d.key} onClick={() => onStart(d.key)}
               style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: '20px 16px', textAlign: 'left', cursor: 'pointer', color: C.text, fontFamily: 'inherit' }}>
@@ -444,7 +462,9 @@ function HomeScreen({ split, progress, history, challengeStats, onStart, onEdit,
                 {d.exercises.some(e => e.optional) && (
                   <div style={{ fontSize: 12, color: C.muted, fontWeight: 800, letterSpacing: 0.5, border: `1px dashed ${C.border}`, padding: '4px 10px', borderRadius: 999 }}>+{d.exercises.filter(e => e.optional).length} OPT</div>
                 )}
-                <div style={{ fontSize: 12, color: C.acc, fontWeight: 800, letterSpacing: 0.5, background: C.accLight, padding: '5px 10px', borderRadius: 999 }}>CYCLE {cycle}</div>
+                <div style={{ fontSize: 12, color: C.acc, fontWeight: 800, letterSpacing: 0.5, background: C.accLight, padding: '5px 10px', borderRadius: 999 }}>
+                  {lastByDay[d.key] ? `LAST ${shortDate(lastByDay[d.key])}` : 'NOT YET RUN'}
+                </div>
               </div>
             </button>
           )
@@ -880,7 +900,7 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
 // Session Screen (workout logging)
 // ═══════════════════════════════════════════════════════════════════════════
 function SessionScreen({
-  dayKey, split, onBack, onCompleteClick, currentCycle,
+  dayKey, split, onBack, onCompleteClick,
   sessionLogs, setSessionLogs,
   sessionExercises,
   supabaseSessionId,
@@ -898,7 +918,18 @@ function SessionScreen({
   const coreLogged = coreExercises.filter(isLogged).length
   const optionalLogged = sessionExercises.filter(ex => ex.optional && isLogged(ex)).length
   const loggedCount = coreLogged + optionalLogged
-  const challengesDone = Object.values(sessionLogs).flat().filter(s => s?.type === 'challenge').length
+
+  // Progress is tracked in SETS, not exercises — a 6-set lateral raise and a
+  // 3-set dip are not the same unit of work. Chippers carry a rep target
+  // rather than a set target and have their own bar inside the card, so they
+  // sit out of this tally on both sides.
+  const countedSets = ex => (sessionLogs[ex.id] || []).filter(s => s.type !== 'swap' && s.type !== 'challenge').length
+  const setExercises = coreExercises.filter(ex => ex.type !== 'chipper')
+  const targetSets = setExercises.reduce((a, ex) => a + (ex.sets ?? 0), 0)
+  const doneSets = setExercises.reduce((a, ex) => a + countedSets(ex), 0)
+  const optionalSets = sessionExercises
+    .filter(ex => ex.optional && ex.type !== 'chipper')
+    .reduce((a, ex) => a + countedSets(ex), 0)
 
   function logSet(exerciseId, newSet) {
     const next = { ...sessionLogs, [exerciseId]: [...(sessionLogs[exerciseId] || []).filter(s => s.type !== 'swap'), newSet] }
@@ -936,8 +967,9 @@ function SessionScreen({
             style={{ position: 'relative', background: C.surface, borderRadius: 20, padding: '28px 24px', width: '100%', maxWidth: 360, border: `0.5px solid ${C.border}` }}>
             <div style={{ fontSize: 22, fontWeight: 800, color: C.text, marginBottom: 8 }}>Finish session?</div>
             <div style={{ fontSize: 15, color: C.sub, lineHeight: 1.5, marginBottom: 24 }}>
-              You logged {coreLogged} of {coreExercises.length} core exercises
-              {optionalLogged > 0 ? ` plus ${optionalLogged} optional` : ''}. We'll calculate next week's targets.
+              You logged {doneSets} of {targetSets} sets
+              {optionalSets > 0 ? ` plus ${optionalSets} optional` : ''}, across {coreLogged} of {coreExercises.length} exercises.
+              We'll calculate next week's targets.
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={() => setShowCompleteConfirm(false)}
@@ -966,7 +998,7 @@ function SessionScreen({
               background: `linear-gradient(180deg, ${C.teal} 0%, ${C.blue} 45%, ${C.pink} 100%)`,
               WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
             }}>{day.label}</div>
-            <div style={{ fontSize: 13, color: C.sub, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{day.sub} · Cycle {currentCycle}</div>
+            <div style={{ fontSize: 13, color: C.sub, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{day.sub} · {weekLabel()}</div>
           </div>
           <button onClick={() => setShowPeek(true)}
             style={{ background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 8, color: C.muted, fontSize: 13, fontWeight: 'bold', letterSpacing: 1, padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit' }}>DAYS</button>
@@ -974,19 +1006,15 @@ function SessionScreen({
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 18px 12px' }}>
           <div style={{ flex: 1, height: 8, background: C.innerBg, borderRadius: 4, overflow: 'hidden', border: `1px solid ${C.border}` }}>
             <div style={{
-              height: '100%', width: `${coreExercises.length ? Math.round((coreLogged / coreExercises.length) * 100) : 0}%`,
+              height: '100%', width: `${targetSets ? Math.min(100, Math.round((doneSets / targetSets) * 100)) : 0}%`,
               background: `linear-gradient(90deg, ${C.blue}, ${C.pink})`,
               boxShadow: `0 0 8px ${C.pink}`, transition: 'width 0.3s', borderRadius: 4,
             }} />
           </div>
           <div style={{ fontSize: 15, color: C.text, fontFamily: 'monospace', fontWeight: 800, flexShrink: 0 }}>
-            {coreLogged}/{coreExercises.length}{optionalLogged > 0 && <span style={{ color: C.muted }}>+{optionalLogged}</span>}
+            {doneSets}/{targetSets}{optionalSets > 0 && <span style={{ color: C.muted }}>+{optionalSets}</span>}
+            <span style={{ fontSize: 11, color: C.sub, fontWeight: 700, marginLeft: 4 }}>SETS</span>
           </div>
-          {challengesDone > 0 && (
-            <div style={{ fontSize: 13, color: C.blue, fontWeight: 800, flexShrink: 0, border: `1px dashed ${C.blue}`, borderRadius: 999, padding: '3px 10px' }}>
-              🎲 {challengesDone}
-            </div>
-          )}
         </div>
       </div>
 
@@ -1029,7 +1057,7 @@ function ResultsScreen({ day, result, currentCycle, onDone, onBack }) {
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '28px 20px 40px', background: C.bg }}>
       <div style={{ fontSize: 15, color: C.acc, letterSpacing: 3, marginBottom: 8, fontWeight: 'bold' }}>
-        NEXT {day.label.toUpperCase()} — CYCLE {result?.next_cycle ?? currentCycle + 1}
+        NEXT {day.label.toUpperCase()}
       </div>
       <div style={{ fontSize: 36, fontWeight: 800, lineHeight: 1, marginBottom: 6, color: C.text }}>{day.label}</div>
       {result?.session_summary && (
@@ -1621,7 +1649,7 @@ export default function App() {
   const [split, setSplit] = useState(null)
   const [progress, setProgress] = useState(null)
   const [history, setHistory] = useState([])
-  const [challengeStats, setChallengeStats] = useState(null)
+  const [weeklyVolume, setWeeklyVolume] = useState(null)
   const [dataReady, setDataReady] = useState(false)
 
   const wakeLockRef = useRef(null)
@@ -1681,9 +1709,9 @@ export default function App() {
           await seedUserData(user.id)
           result = await loadProgramFromSupabase(user.id)
         }
-        const [hist, stats] = await Promise.all([
+        const [hist, vol] = await Promise.all([
           loadHistoryFromSupabase(user.id),
-          loadChallengeStats(user.id),
+          loadWeeklyVolume(user.id),
         ])
         if (cancelled) return
         if (result?.program) {
@@ -1691,7 +1719,7 @@ export default function App() {
           setProgress(result.progress)
         }
         setHistory(hist)
-        setChallengeStats(stats)
+        setWeeklyVolume(vol)
         setDataReady(true)
       } catch (e) {
         console.error('[supabase init]', e)
@@ -1704,12 +1732,12 @@ export default function App() {
 
   async function reloadHistory() {
     if (!user) return
-    const [hist, stats] = await Promise.all([
+    const [hist, vol] = await Promise.all([
       loadHistoryFromSupabase(user.id),
-      loadChallengeStats(user.id),
+      loadWeeklyVolume(user.id),
     ])
     setHistory(hist)
-    setChallengeStats(stats)
+    setWeeklyVolume(vol)
   }
 
   // Session state is mirrored to localStorage on every change so a tab kill
@@ -1901,7 +1929,7 @@ export default function App() {
     <div style={{ position: 'relative', maxWidth: 480, margin: '0 auto', height: '100dvh', background: C.bg, display: 'flex', flexDirection: 'column', color: C.text, fontFamily: '-apple-system, Arial, sans-serif' }}>
       <SyncPill />
       {screen === 'home' && (
-        <HomeScreen split={split} progress={progress} history={history} challengeStats={challengeStats}
+        <HomeScreen split={split} progress={progress} history={history} weeklyVolume={weeklyVolume}
           onStart={startSession} onEdit={() => setScreen('edit')}
           hasActiveSession={hasActiveSession} activeSessionKey={dayKey}
           onResumeSession={() => setScreen('session')} onRecover={recoverLatest}
