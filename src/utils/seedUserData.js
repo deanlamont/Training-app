@@ -125,7 +125,7 @@ export async function seedUserData(userId) {
     { day: 'full_body_3', ex: 'Cable Face Pulls',               sid: 'fb3_fp',        type: 'straight', sets: 3, min: 15, max: 20, order: 5, intensifier: '1s pause + squeeze at peak' },
     { day: 'full_body_3', ex: 'Hammer Curls',                   sid: 'fb3_hammer',    type: 'straight', sets: 3, min: 12, max: 12, order: 6 },
     { day: 'full_body_3', ex: 'Cable Rope Overhead Extension',  sid: 'fb3_rope_oh',   type: 'straight', sets: 3, min: 12, max: 15, order: 7, intensifier: 'Slow 3s eccentric (long-head stretch)' },
-    { day: 'full_body_3', ex: 'Bulgarian Split Squat',          sid: 'fb3_bulg',      type: 'straight', sets: 3, min: 8,  max: 8,  order: 8, note: '/leg. Rear foot elevated on bench. Front shin vertical, drop straight down. Bodyweight to start, add DBs as it gets easy.' },
+    { day: 'full_body_3', ex: 'Goblet Squat',                   sid: 'fb3_goblet',    type: 'straight', sets: 3, min: 12, max: 15, order: 8, note: 'Kettlebell or DB at the chest, elbows tucked inside the knees. Heels flat, knees tracking over the toes, hips to parallel or below if your ankles allow.', intensifier: '1s pause at the bottom — no bouncing out of the hole' },
     { day: 'full_body_3', ex: 'Lateral Band Walks',             sid: 'fb3_band_walk', type: 'straight', sets: 3, min: 15, max: 15, order: 9, note: '/side. Band above knees or around ankles. Quarter squat, small controlled steps. Knees push OUT into the band the whole time.' },
 
     // DAY 5 — 7 longevity movements (single-set, notes-only; intermediate-tier defaults).
@@ -344,7 +344,7 @@ https://youtu.be/utBzlEiX-zA` },
     { day: 'full_body_3', ex: 'Cable Face Pulls',               w: 44,   sets: 3, min: 15, max: 20, rir: 1, type: 'straight' },
     { day: 'full_body_3', ex: 'Hammer Curls',                   w: 50,   sets: 3, min: 12, max: 12, rir: 2, type: 'straight' },
     { day: 'full_body_3', ex: 'Cable Rope Overhead Extension',  w: 49,   sets: 3, min: 12, max: 15, rir: 1, type: 'straight' },
-    { day: 'full_body_3', ex: 'Bulgarian Split Squat',          w: 10,   sets: 3, min: 8,  max: 8,  rir: 2, type: 'straight' },
+    { day: 'full_body_3', ex: 'Goblet Squat',                   w: 35,   sets: 3, min: 12, max: 15, rir: 2, type: 'straight' },
   ];
 
   const targetRows = cycle4Targets
