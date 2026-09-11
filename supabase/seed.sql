@@ -65,6 +65,7 @@ insert into exercises (name, equipment_category, muscle_group, movement_type, we
   -- Shoulders (additional)
   ('Standing Barbell OHP',            'free_weight',    'shoulders',  'compound',  5),
   ('Landmine Press',                  'specialty',      'shoulders',  'compound',  5),
+  ('Arnold Press',                    'free_weight',    'shoulders',  'compound',  5),
   -- Biceps (additional)
   ('Hammer Curls',                    'free_weight',    'biceps',     'isolation', 5),
   ('EZ Bar Curls',                    'free_weight',    'biceps',     'isolation', 5),

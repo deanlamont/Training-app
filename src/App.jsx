@@ -144,6 +144,7 @@ const LIBRARY = [
         why: 'The main vertical-plane strength builder for the upper body.',
         variations: [
           { when: 'Impingement / mobility', do: 'Single dumbbell — lets the wrist stack over elbow over shoulder' },
+          { when: 'A machine press hurts', do: 'Arnold press — start palms-in at chin height and rotate out as you press, so the shoulder picks its own path instead of a fixed groove' },
         ],
       },
       {
