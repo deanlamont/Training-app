@@ -345,7 +345,7 @@ function formatLastSets(lastSets) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Home Screen
 // ═══════════════════════════════════════════════════════════════════════════
-function HomeScreen({ split, progress, history, weeklyVolume, onStart, onEdit, hasActiveSession, activeSessionKey, onResumeSession, onRecover, onMobility, onHomeWorkout, onLibrary, userEmail, onSignOut }) {
+function HomeScreen({ split, progress, history, weeklyVolume, onStart, onEdit, onWeights, hasActiveSession, activeSessionKey, onResumeSession, onRecover, onMobility, onHomeWorkout, onLibrary, userEmail, onSignOut }) {
   // Most recent completed session per day — replaces the cycle counter, which
   // had drifted badly out of sync between days and told the user nothing.
   const lastByDay = {}
@@ -521,6 +521,10 @@ function HomeScreen({ split, progress, history, weeklyVolume, onStart, onEdit, h
         <div style={{ fontSize: 15, color: C.teal, fontWeight: 'bold', letterSpacing: 1 }}>READ</div>
       </button>
 
+      <button onClick={onWeights}
+        style={{ width: '100%', marginBottom: 10, padding: '14px 0', background: 'none', border: `0.5px solid ${C.acc}`, borderRadius: 14, color: C.acc, fontSize: 15, fontWeight: 'bold', letterSpacing: 2, cursor: 'pointer', fontFamily: 'inherit' }}>
+        EDIT WEIGHTS
+      </button>
       <button onClick={onEdit}
         style={{ width: '100%', padding: '14px 0', background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 14, color: C.muted, fontSize: 15, fontWeight: 'bold', letterSpacing: 2, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 10 }}>
         EDIT PROGRAM
@@ -612,7 +616,7 @@ function Stepper({ value, onChange, step = 1, min = 0, max = 9999, label }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Exercise Card (collapsed / expanded with set entry)
 // ═══════════════════════════════════════════════════════════════════════════
-function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDeleteSet, onSkip, onChangeTarget, supabaseSessionId }) {
+function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDeleteSet, onSkip, supabaseSessionId }) {
   const allLogged = sets.filter(s => s.type !== 'swap')          // display + delete indexing
   const workSets = allLogged.filter(s => s.type !== 'challenge') // counts, progression, defaults
   const hasAnyLogs = workSets.length > 0
@@ -680,14 +684,6 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
   }, [expanded, ex.id])
 
   const step = 5
-
-  // Updates the plan's target weight. Until a set is logged, the entry
-  // stepper below follows along so the next LOG SET uses the new weight.
-  function changeTarget(w) {
-    const next = Math.max(0, w)
-    onChangeTarget(next)
-    if (!hasAnyLogs) setWeight(next)
-  }
 
   function doLogSet() {
     if (weight == null || reps == null || reps <= 0) return
@@ -782,20 +778,6 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
         </div>
         <button onClick={onExpand} aria-label="collapse"
           style={{ background: 'none', border: 'none', color: C.muted, fontSize: 26, cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}>×</button>
-      </div>
-
-      {/* Quick target-weight edit — saves to the cloud and carries to shared days */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-        <div style={{ flex: 1, fontSize: 13, color: C.sub, letterSpacing: 1.5, fontWeight: 700 }}>TARGET WEIGHT</div>
-        <div style={{ display: 'flex', alignItems: 'stretch', background: C.innerBg, border: `1px solid ${C.border}`, borderRadius: 12, overflow: 'hidden', height: 44 }}>
-          <button onClick={() => changeTarget((ex.w ?? 0) - step)} aria-label="lower target weight"
-            style={{ width: 44, background: 'none', border: 'none', color: C.sub, fontSize: 22, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>−</button>
-          <input type="number" inputMode="decimal" value={ex.w ?? ''}
-            onChange={e => e.target.value !== '' && changeTarget(Number(e.target.value))}
-            style={{ width: 64, background: 'none', border: 'none', color: C.acc, fontSize: 20, fontWeight: 800, textAlign: 'center', fontFamily: 'monospace', outline: 'none' }} />
-          <button onClick={() => changeTarget((ex.w ?? 0) + step)} aria-label="raise target weight"
-            style={{ width: 44, background: 'none', border: 'none', color: C.sub, fontSize: 22, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>+</button>
-        </div>
       </div>
 
       {/* Logged sets (work sets + any challenge result) */}
@@ -928,7 +910,6 @@ function SessionScreen({
   sessionExercises,
   supabaseSessionId,
   lastSessionLogs,
-  onChangeTarget,
 }) {
   const day = split[dayKey]
   const [expandedId, setExpandedId] = useState(null)
@@ -1059,7 +1040,6 @@ function SessionScreen({
             onLogSet={s => logSet(ex.id, s)}
             onDeleteSet={i => deleteSet(ex.id, i)}
             onSkip={() => skipExercise(ex.id)}
-            onChangeTarget={w => onChangeTarget(ex, w)}
             supabaseSessionId={supabaseSessionId}
           />
         ))}
@@ -1287,6 +1267,78 @@ function EditScreen({ split, onSave, onBack }) {
       <div style={{ position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 480, padding: '16px 18px', background: C.surface, borderTop: `0.5px solid ${C.border}`, boxSizing: 'border-box' }}>
         <button onClick={() => onSave(draft)}
           style={{ width: '100%', padding: '14px 0', background: C.acc, border: 'none', borderRadius: 12, color: '#fff', fontSize: 16, fontWeight: 700, letterSpacing: 1, cursor: 'pointer', fontFamily: 'inherit' }}>SAVE CHANGES</button>
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Weights Screen — quick edit of the program's target weights
+// ═══════════════════════════════════════════════════════════════════════════
+// Number box that commits on blur/Enter so the field can be cleared while typing.
+function WeightInput({ value, onCommit }) {
+  const [text, setText] = useState(value ?? '')
+  useEffect(() => { setText(value ?? '') }, [value])
+  function commit() {
+    const n = Number(text)
+    if (text === '' || !Number.isFinite(n) || n < 0) { setText(value ?? ''); return }
+    if (n !== value) onCommit(n)
+  }
+  return (
+    <input type="number" inputMode="decimal" value={text} placeholder="TBD"
+      onChange={e => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+      style={{ width: 58, background: 'none', border: 'none', color: C.acc, fontSize: 18, fontWeight: 800, textAlign: 'center', fontFamily: 'monospace', outline: 'none' }} />
+  )
+}
+
+function WeightsScreen({ split, onChange, onBack }) {
+  const [openDay, setOpenDay] = useState(null)
+  const days = Object.values(split).filter(d => !REFERENCE_DAY_KEYS.has(d.key))
+  const step = 5
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: C.bg }}>
+      <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', padding: '16px 18px', borderBottom: `0.5px solid ${C.border}`, gap: 12, background: C.surface }}>
+        <button onClick={onBack} style={{ background: 'none', border: 'none', color: C.sub, fontSize: 28, cursor: 'pointer', padding: '4px 8px', lineHeight: 1 }}>←</button>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 20, fontWeight: 700, color: C.text }}>Program Weights</div>
+          <div style={{ fontSize: 13, color: C.sub, marginTop: 2 }}>Changes save automatically · shared lifts update on every day</div>
+        </div>
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px 60px' }}>
+        {days.map(day => (
+          <div key={day.key} style={{ marginBottom: 12 }}>
+            <button onClick={() => setOpenDay(openDay === day.key ? null : day.key)}
+              style={{ width: '100%', background: C.surface, border: `0.5px solid ${C.border}`, borderRadius: 12, padding: '14px 18px', textAlign: 'left', cursor: 'pointer', color: C.text, fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontSize: 18, fontWeight: 700 }}>{day.label}</div>
+                <div style={{ fontSize: 14, color: C.sub, marginTop: 2 }}>{day.sub}</div>
+              </div>
+              <div style={{ fontSize: 14, color: C.muted, fontWeight: 'bold' }}>{openDay === day.key ? '▲' : '▼'}</div>
+            </button>
+            {openDay === day.key && (
+              <div style={{ marginTop: 8 }}>
+                {day.exercises.map(ex => (
+                  <div key={ex.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: C.innerBg, borderRadius: 12, marginBottom: 6 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{ex.name}</div>
+                      {ex.note && <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{ex.note}</div>}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'stretch', background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, overflow: 'hidden', height: 44, flexShrink: 0 }}>
+                      <button onClick={() => onChange(day.key, ex, Math.max(0, (ex.w ?? 0) - step))} aria-label={`lower ${ex.name} weight`}
+                        style={{ width: 40, background: 'none', border: 'none', color: C.sub, fontSize: 22, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>−</button>
+                      <WeightInput value={ex.w} onCommit={w => onChange(day.key, ex, w)} />
+                      <button onClick={() => onChange(day.key, ex, (ex.w ?? 0) + step)} aria-label={`raise ${ex.name} weight`}
+                        style={{ width: 40, background: 'none', border: 'none', color: C.sub, fontSize: 22, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>+</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   )
@@ -1825,28 +1877,27 @@ export default function App() {
     }
   }
 
-  // Quick target-weight edit from the session screen. Updates the in-session
-  // list and the plan (all days sharing the exercise) immediately; the cloud
-  // write is debounced so stepper taps collapse into one upsert.
+  // Quick program-weight edit (Edit Weights screen). Updates the plan locally
+  // for every day sharing the exercise; the cloud write is debounced so
+  // stepper taps collapse into one upsert.
   const weightTimers = useRef({})
-  function changeTargetWeight(ex, w) {
-    setSessionExercises(prev => prev.map(e => (e.id === ex.id ? { ...e, w } : e)))
+  function changeProgramWeight(key, ex, w) {
     setSplit(prev => {
       const next = JSON.parse(JSON.stringify(prev))
       for (const d of Object.values(next)) {
         for (const e of d.exercises) {
-          if (ex._exercise_id ? e._exercise_id === ex._exercise_id : (d.key === dayKey && e.id === ex.id)) e.w = w
+          if (ex._exercise_id ? e._exercise_id === ex._exercise_id : (d.key === key && e.id === ex.id)) e.w = w
         }
       }
       return next
     })
 
     const u = supabaseUserRef.current
-    const splitDayId = split?.[dayKey]?._split_day_id
-    const week = progress?.[dayKey]?.week ?? 3
+    const splitDayId = split?.[key]?._split_day_id
+    const week = progress?.[key]?.week ?? 3
     if (!u || !splitDayId || !ex._exercise_id) return
-    clearTimeout(weightTimers.current[ex.id])
-    weightTimers.current[ex.id] = setTimeout(() => {
+    clearTimeout(weightTimers.current[ex._exercise_id])
+    weightTimers.current[ex._exercise_id] = setTimeout(() => {
       enqueueWrite(`weight:${ex._exercise_id.slice(0, 8)}`, () =>
         saveExerciseWeight(u.id, splitDayId, week, ex, w)
       ).catch(() => { /* failure already counted in writeQueue.failed */ })
@@ -1983,7 +2034,7 @@ export default function App() {
       <SyncPill />
       {screen === 'home' && (
         <HomeScreen split={split} progress={progress} history={history} weeklyVolume={weeklyVolume}
-          onStart={startSession} onEdit={() => setScreen('edit')}
+          onStart={startSession} onEdit={() => setScreen('edit')} onWeights={() => setScreen('weights')}
           hasActiveSession={hasActiveSession} activeSessionKey={dayKey}
           onResumeSession={() => setScreen('session')} onRecover={recoverLatest}
           onMobility={() => setScreen('mobility')}
@@ -2002,6 +2053,9 @@ export default function App() {
       )}
       {screen === 'reference' && dayKey && (
         <ReferenceScreen day={split[dayKey]} onBack={() => setScreen('home')} />
+      )}
+      {screen === 'weights' && (
+        <WeightsScreen split={split} onChange={changeProgramWeight} onBack={() => setScreen('home')} />
       )}
       {screen === 'edit' && (
         <EditScreen split={split} onSave={async s => {
@@ -2037,7 +2091,6 @@ export default function App() {
             sessionExercises={sessionExercises}
             supabaseSessionId={supabaseSessionId}
             lastSessionLogs={lastSessionLogs}
-            onChangeTarget={changeTargetWeight}
           />
         )
       )}
