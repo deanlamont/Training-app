@@ -186,6 +186,70 @@ async function mirrorWeightsToSharedDays(userId, sourceSplitDayId, sourceTargetR
 const DAY_ORDER = { push_a: 1, push_b: 2, pull_a: 3, pull_b: 4, day_5: 5, tennis_prep: 6, full_body_1: 7, full_body_2: 8, full_body_3: 9 }
 
 /**
+ * Quick weight edit: upserts one exercise's current-week target on its day and
+ * mirrors the weight to every other day that has the same exercise. Much
+ * lighter than saveProgramToSupabase (no roster delete + insert).
+ */
+export async function saveExerciseWeight(userId, splitDayId, weekNumber, ex, weight) {
+  if (!supabase || !userId || !splitDayId || !ex?._exercise_id || weight == null) return
+
+  const row = {
+    user_id: userId,
+    exercise_id: ex._exercise_id,
+    split_day_id: splitDayId,
+    week_number: weekNumber,
+    mesocycle: 1,
+    target_weight: weight,
+    target_sets: ex.sets ?? null,
+    target_reps_min: ex.min,
+    target_reps_max: ex.max,
+    target_rir: 2,
+    set_type: ex.type,
+    source: 'edit',
+  }
+  const { error } = await supabase
+    .from('progression_targets')
+    .upsert([row], { onConflict: 'user_id,exercise_id,split_day_id,week_number,mesocycle' })
+  if (error) throw new Error(`Weight save failed: ${error.message}`)
+
+  await mirrorWeightsToSharedDays(userId, splitDayId, [row])
+}
+
+/**
+ * Quick rep-scheme edit: updates one exercise's sets / rep range on ONE day
+ * (reps are per-day, unlike weight). Writes the roster row the app loads from
+ * and keeps the current-week progression target in step.
+ */
+export async function saveExerciseReps(userId, splitDayId, weekNumber, ex) {
+  if (!supabase || !userId || !splitDayId || !ex?._exercise_id) return
+
+  const { error } = await supabase
+    .from('split_day_exercises')
+    .update({
+      target_sets: ex.sets ?? null,
+      target_reps_min: ex.min,
+      target_reps_max: ex.max,
+    })
+    .eq('split_day_id', splitDayId)
+    .eq('exercise_id', ex._exercise_id)
+  if (error) throw new Error(`Rep save failed: ${error.message}`)
+
+  const { error: tErr } = await supabase
+    .from('progression_targets')
+    .update({
+      target_sets: ex.sets ?? null,
+      target_reps_min: ex.min,
+      target_reps_max: ex.max,
+    })
+    .eq('user_id', userId)
+    .eq('split_day_id', splitDayId)
+    .eq('exercise_id', ex._exercise_id)
+    .eq('week_number', weekNumber)
+    .eq('mesocycle', 1)
+  if (tErr) console.warn('[saveExerciseReps] target sync', tErr)
+}
+
+/**
  * Persists an edited program back to Supabase. Replaces split_day_exercises
  * for each day (delete + insert) and upserts current-week progression_targets.
  */
