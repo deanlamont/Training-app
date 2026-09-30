@@ -216,6 +216,40 @@ export async function saveExerciseWeight(userId, splitDayId, weekNumber, ex, wei
 }
 
 /**
+ * Quick rep-scheme edit: updates one exercise's sets / rep range on ONE day
+ * (reps are per-day, unlike weight). Writes the roster row the app loads from
+ * and keeps the current-week progression target in step.
+ */
+export async function saveExerciseReps(userId, splitDayId, weekNumber, ex) {
+  if (!supabase || !userId || !splitDayId || !ex?._exercise_id) return
+
+  const { error } = await supabase
+    .from('split_day_exercises')
+    .update({
+      target_sets: ex.sets ?? null,
+      target_reps_min: ex.min,
+      target_reps_max: ex.max,
+    })
+    .eq('split_day_id', splitDayId)
+    .eq('exercise_id', ex._exercise_id)
+  if (error) throw new Error(`Rep save failed: ${error.message}`)
+
+  const { error: tErr } = await supabase
+    .from('progression_targets')
+    .update({
+      target_sets: ex.sets ?? null,
+      target_reps_min: ex.min,
+      target_reps_max: ex.max,
+    })
+    .eq('user_id', userId)
+    .eq('split_day_id', splitDayId)
+    .eq('exercise_id', ex._exercise_id)
+    .eq('week_number', weekNumber)
+    .eq('mesocycle', 1)
+  if (tErr) console.warn('[saveExerciseReps] target sync', tErr)
+}
+
+/**
  * Persists an edited program back to Supabase. Replaces split_day_exercises
  * for each day (delete + insert) and upserts current-week progression_targets.
  */

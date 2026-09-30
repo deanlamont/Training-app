@@ -5,6 +5,7 @@ import {
   saveSessionTargets,
   saveProgramToSupabase,
   saveExerciseWeight,
+  saveExerciseReps,
   loadHistoryFromSupabase,
 } from './utils/loadProgramFromSupabase'
 import { seedUserData } from './utils/seedUserData'
@@ -1276,7 +1277,7 @@ function EditScreen({ split, onSave, onBack }) {
 // Weights Screen — quick edit of the program's target weights
 // ═══════════════════════════════════════════════════════════════════════════
 // Number box that commits on blur/Enter so the field can be cleared while typing.
-function WeightInput({ value, onCommit }) {
+function NumInput({ value, onCommit, width = 58, size = 18, color, placeholder = 'TBD', allowDecimal = true }) {
   const [text, setText] = useState(value ?? '')
   useEffect(() => { setText(value ?? '') }, [value])
   function commit() {
@@ -1285,15 +1286,15 @@ function WeightInput({ value, onCommit }) {
     if (n !== value) onCommit(n)
   }
   return (
-    <input type="number" inputMode="decimal" value={text} placeholder="TBD"
+    <input type="number" inputMode={allowDecimal ? 'decimal' : 'numeric'} value={text} placeholder={placeholder}
       onChange={e => setText(e.target.value)}
       onBlur={commit}
       onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
-      style={{ width: 58, background: 'none', border: 'none', color: C.acc, fontSize: 18, fontWeight: 800, textAlign: 'center', fontFamily: 'monospace', outline: 'none' }} />
+      style={{ width, background: 'none', border: 'none', color: color ?? C.acc, fontSize: size, fontWeight: 800, textAlign: 'center', fontFamily: 'monospace', outline: 'none' }} />
   )
 }
 
-function WeightsScreen({ split, onChange, onBack }) {
+function WeightsScreen({ split, onChange, onChangeReps, onBack }) {
   const [openDay, setOpenDay] = useState(null)
   const days = Object.values(split).filter(d => !REFERENCE_DAY_KEYS.has(d.key))
   const step = 5
@@ -1321,7 +1322,8 @@ function WeightsScreen({ split, onChange, onBack }) {
             {openDay === day.key && (
               <div style={{ marginTop: 8 }}>
                 {day.exercises.map(ex => (
-                  <div key={ex.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: C.innerBg, borderRadius: 12, marginBottom: 6 }}>
+                  <div key={ex.id} style={{ padding: '10px 12px', background: C.innerBg, borderRadius: 12, marginBottom: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{ex.name}</div>
                       {ex.note && <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{ex.note}</div>}
@@ -1329,9 +1331,32 @@ function WeightsScreen({ split, onChange, onBack }) {
                     <div style={{ display: 'flex', alignItems: 'stretch', background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, overflow: 'hidden', height: 44, flexShrink: 0 }}>
                       <button onClick={() => onChange(day.key, ex, Math.max(0, (ex.w ?? 0) - step))} aria-label={`lower ${ex.name} weight`}
                         style={{ width: 40, background: 'none', border: 'none', color: C.sub, fontSize: 22, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>−</button>
-                      <WeightInput value={ex.w} onCommit={w => onChange(day.key, ex, w)} />
+                      <NumInput value={ex.w} onCommit={w => onChange(day.key, ex, w)} />
                       <button onClick={() => onChange(day.key, ex, (ex.w ?? 0) + step)} aria-label={`raise ${ex.name} weight`}
                         style={{ width: 40, background: 'none', border: 'none', color: C.sub, fontSize: 22, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>+</button>
+                    </div>
+                  </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 12, color: C.sub, fontWeight: 700, letterSpacing: 1 }}>
+                      {ex.type === 'chipper' ? (
+                        <>
+                          <span>TOTAL REPS</span>
+                          <NumInput value={ex.max ?? ex.min} width={48} size={15} color={C.text} allowDecimal={false}
+                            onCommit={v => onChangeReps(day.key, ex, 'max', v)} />
+                        </>
+                      ) : (
+                        <>
+                          {ex.sets != null && (
+                            <>
+                              <NumInput value={ex.sets} width={36} size={15} color={C.text} allowDecimal={false} onCommit={v => onChangeReps(day.key, ex, 'sets', v)} />
+                              <span>SETS ×</span>
+                            </>
+                          )}
+                          <NumInput value={ex.min} width={36} size={15} color={C.text} allowDecimal={false} onCommit={v => onChangeReps(day.key, ex, 'min', v)} />
+                          <span>–</span>
+                          <NumInput value={ex.max} width={36} size={15} color={C.text} allowDecimal={false} onCommit={v => onChangeReps(day.key, ex, 'max', v)} />
+                          <span>REPS</span>
+                        </>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -1904,6 +1929,35 @@ export default function App() {
     }, 600)
   }
 
+  // Quick rep-scheme edit (sets / min / max). Reps are per-day, so only that
+  // day's copy of the exercise changes.
+  const repTimers = useRef({})
+  function changeProgramReps(key, ex, field, value) {
+    const u = supabaseUserRef.current
+    const day = split?.[key]
+    const cur = day?.exercises.find(e => e.id === ex.id)
+    if (!cur) return
+    const next = { ...cur, [field]: value }
+    if (cur.type === 'chipper') next.min = next.max = value
+    else if (field === 'min' && next.max != null && value > next.max) next.max = value
+    if (cur.type !== 'chipper' && field === 'max' && next.min != null && value < next.min) next.min = value
+    setSplit(prev => {
+      const copy = JSON.parse(JSON.stringify(prev))
+      const target = copy[key].exercises.find(e => e.id === ex.id)
+      if (target) { target.sets = next.sets; target.min = next.min; target.max = next.max }
+      return copy
+    })
+    const week = progress?.[key]?.week ?? 3
+    if (!u || !day._split_day_id || !ex._exercise_id) return
+    const tKey = `${day._split_day_id}:${ex._exercise_id}`
+    clearTimeout(repTimers.current[tKey])
+    repTimers.current[tKey] = setTimeout(() => {
+      enqueueWrite(`reps:${ex._exercise_id.slice(0, 8)}`, () =>
+        saveExerciseReps(u.id, day._split_day_id, week, next)
+      ).catch(() => { /* failure already counted in writeQueue.failed */ })
+    }, 600)
+  }
+
   function finishSessionClick() {
     const day = split[dayKey]
     const result = computeNextTargets(sessionExercises, sessionLogs, currentCycle)
@@ -2055,7 +2109,7 @@ export default function App() {
         <ReferenceScreen day={split[dayKey]} onBack={() => setScreen('home')} />
       )}
       {screen === 'weights' && (
-        <WeightsScreen split={split} onChange={changeProgramWeight} onBack={() => setScreen('home')} />
+        <WeightsScreen split={split} onChange={changeProgramWeight} onChangeReps={changeProgramReps} onBack={() => setScreen('home')} />
       )}
       {screen === 'edit' && (
         <EditScreen split={split} onSave={async s => {
