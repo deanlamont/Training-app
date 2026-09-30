@@ -4,6 +4,7 @@ import {
   loadProgramFromSupabase,
   saveSessionTargets,
   saveProgramToSupabase,
+  saveExerciseWeight,
   loadHistoryFromSupabase,
 } from './utils/loadProgramFromSupabase'
 import { seedUserData } from './utils/seedUserData'
@@ -19,7 +20,7 @@ import {
 } from './utils/sessionSync'
 import { loadWeeklyVolume, weekLabel } from './utils/weeklyVolume'
 import { computeNextTargets } from './utils/progression'
-import { subscribe as subscribeQueue, getStatus as getQueueStatus, clearFailed } from './utils/writeQueue'
+import { subscribe as subscribeQueue, getStatus as getQueueStatus, clearFailed, enqueueWrite } from './utils/writeQueue'
 
 const APP_VERSION = 'v2026-07-09-chippers'
 
@@ -611,7 +612,7 @@ function Stepper({ value, onChange, step = 1, min = 0, max = 9999, label }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Exercise Card (collapsed / expanded with set entry)
 // ═══════════════════════════════════════════════════════════════════════════
-function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDeleteSet, onSkip, supabaseSessionId }) {
+function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDeleteSet, onSkip, onChangeTarget, supabaseSessionId }) {
   const allLogged = sets.filter(s => s.type !== 'swap')          // display + delete indexing
   const workSets = allLogged.filter(s => s.type !== 'challenge') // counts, progression, defaults
   const hasAnyLogs = workSets.length > 0
@@ -679,6 +680,14 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
   }, [expanded, ex.id])
 
   const step = 5
+
+  // Updates the plan's target weight. Until a set is logged, the entry
+  // stepper below follows along so the next LOG SET uses the new weight.
+  function changeTarget(w) {
+    const next = Math.max(0, w)
+    onChangeTarget(next)
+    if (!hasAnyLogs) setWeight(next)
+  }
 
   function doLogSet() {
     if (weight == null || reps == null || reps <= 0) return
@@ -773,6 +782,20 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
         </div>
         <button onClick={onExpand} aria-label="collapse"
           style={{ background: 'none', border: 'none', color: C.muted, fontSize: 26, cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}>×</button>
+      </div>
+
+      {/* Quick target-weight edit — saves to the cloud and carries to shared days */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        <div style={{ flex: 1, fontSize: 13, color: C.sub, letterSpacing: 1.5, fontWeight: 700 }}>TARGET WEIGHT</div>
+        <div style={{ display: 'flex', alignItems: 'stretch', background: C.innerBg, border: `1px solid ${C.border}`, borderRadius: 12, overflow: 'hidden', height: 44 }}>
+          <button onClick={() => changeTarget((ex.w ?? 0) - step)} aria-label="lower target weight"
+            style={{ width: 44, background: 'none', border: 'none', color: C.sub, fontSize: 22, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>−</button>
+          <input type="number" inputMode="decimal" value={ex.w ?? ''}
+            onChange={e => e.target.value !== '' && changeTarget(Number(e.target.value))}
+            style={{ width: 64, background: 'none', border: 'none', color: C.acc, fontSize: 20, fontWeight: 800, textAlign: 'center', fontFamily: 'monospace', outline: 'none' }} />
+          <button onClick={() => changeTarget((ex.w ?? 0) + step)} aria-label="raise target weight"
+            style={{ width: 44, background: 'none', border: 'none', color: C.sub, fontSize: 22, fontWeight: 'bold', cursor: 'pointer', fontFamily: 'inherit' }}>+</button>
+        </div>
       </div>
 
       {/* Logged sets (work sets + any challenge result) */}
@@ -905,6 +928,7 @@ function SessionScreen({
   sessionExercises,
   supabaseSessionId,
   lastSessionLogs,
+  onChangeTarget,
 }) {
   const day = split[dayKey]
   const [expandedId, setExpandedId] = useState(null)
@@ -1035,6 +1059,7 @@ function SessionScreen({
             onLogSet={s => logSet(ex.id, s)}
             onDeleteSet={i => deleteSet(ex.id, i)}
             onSkip={() => skipExercise(ex.id)}
+            onChangeTarget={w => onChangeTarget(ex, w)}
             supabaseSessionId={supabaseSessionId}
           />
         ))}
@@ -1800,6 +1825,34 @@ export default function App() {
     }
   }
 
+  // Quick target-weight edit from the session screen. Updates the in-session
+  // list and the plan (all days sharing the exercise) immediately; the cloud
+  // write is debounced so stepper taps collapse into one upsert.
+  const weightTimers = useRef({})
+  function changeTargetWeight(ex, w) {
+    setSessionExercises(prev => prev.map(e => (e.id === ex.id ? { ...e, w } : e)))
+    setSplit(prev => {
+      const next = JSON.parse(JSON.stringify(prev))
+      for (const d of Object.values(next)) {
+        for (const e of d.exercises) {
+          if (ex._exercise_id ? e._exercise_id === ex._exercise_id : (d.key === dayKey && e.id === ex.id)) e.w = w
+        }
+      }
+      return next
+    })
+
+    const u = supabaseUserRef.current
+    const splitDayId = split?.[dayKey]?._split_day_id
+    const week = progress?.[dayKey]?.week ?? 3
+    if (!u || !splitDayId || !ex._exercise_id) return
+    clearTimeout(weightTimers.current[ex.id])
+    weightTimers.current[ex.id] = setTimeout(() => {
+      enqueueWrite(`weight:${ex._exercise_id.slice(0, 8)}`, () =>
+        saveExerciseWeight(u.id, splitDayId, week, ex, w)
+      ).catch(() => { /* failure already counted in writeQueue.failed */ })
+    }, 600)
+  }
+
   function finishSessionClick() {
     const day = split[dayKey]
     const result = computeNextTargets(sessionExercises, sessionLogs, currentCycle)
@@ -1984,6 +2037,7 @@ export default function App() {
             sessionExercises={sessionExercises}
             supabaseSessionId={supabaseSessionId}
             lastSessionLogs={lastSessionLogs}
+            onChangeTarget={changeTargetWeight}
           />
         )
       )}
