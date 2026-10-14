@@ -115,7 +115,6 @@ export async function seedUserData(userId) {
     { day: 'full_body_2', ex: 'Dips with Knee Raise',           sid: 'fb2_dips',     type: 'straight', sets: 3, min: 8,  max: 12, order: 6 },
     { day: 'full_body_2', ex: 'Romanian Deadlift',              sid: 'fb2_rdl',      type: 'straight', sets: 3, min: 8,  max: 8,  order: 7 },
     { day: 'full_body_2', ex: 'Hip Thrust',                     sid: 'fb2_thrust',   type: 'chipper',  sets: null, min: 50, max: 50, order: 8, note: 'full lockout every rep — no half reps as fatigue builds', intensifier: '2s pause + squeeze at top' },
-    { day: 'full_body_2', ex: 'Chabbles Workout',               sid: 'fb2_chabbles', type: 'straight', sets: 3, min: 10, max: 10, order: 9 },
 
     // FULL BODY 3 — DB Chest · Full Back · Glutes
     { day: 'full_body_3', ex: 'DB 45 Degree Incline',           sid: 'fb3_db_inc',    type: 'straight', sets: 3, min: 10, max: 12, order: 1 },
