@@ -43,6 +43,7 @@ export async function loadProgramFromSupabase(userId) {
         short_id,
         intensifier,
         optional,
+        option_group,
         exercises ( id, name )
       `)
       .eq('split_day_id', day.id)
@@ -81,6 +82,7 @@ export async function loadProgramFromSupabase(userId) {
           note: sde.note ?? undefined,
           intensifier: sde.intensifier ?? undefined,
           optional: sde.optional ?? false,
+          group: sde.option_group ?? undefined,
         }
       }),
     }
@@ -306,6 +308,7 @@ export async function saveProgramToSupabase(userId, program, progress) {
         short_id: ex.id,
         intensifier: ex.intensifier ?? null,
         optional: ex.optional ?? false,
+        option_group: ex.group ?? null,
       })
     }
     if (sdeRows.length) {

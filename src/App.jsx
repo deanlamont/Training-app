@@ -18,12 +18,13 @@ import {
   markSessionComplete,
   fetchMostRecentSessionAny,
   fetchPreviousSessionForDay,
+  fetchLastDoneByExercise,
 } from './utils/sessionSync'
 import { loadWeeklyVolume, weekLabel } from './utils/weeklyVolume'
 import { computeNextTargets } from './utils/progression'
 import { subscribe as subscribeQueue, getStatus as getQueueStatus, clearFailed, enqueueWrite } from './utils/writeQueue'
 
-const APP_VERSION = 'v2026-07-09-chippers'
+const APP_VERSION = 'v2026-11-05-option-slots'
 
 // Reference days are read-only notes screens, not logged workouts (no session
 // row, no progression, no localStorage backstop).
@@ -581,7 +582,7 @@ function PeekModal({ split, currentDayKey, onClose }) {
                 <div style={{ fontSize: 15, fontWeight: 600, color: ex.optional ? C.sub : C.text }}>{ex.name}</div>
                 <div style={{ fontSize: 15, color: C.sub, marginTop: 2 }}>{targetStr(ex)}</div>
               </div>
-              <div style={{ fontSize: 15, color: ex.optional ? C.muted : C.blue, letterSpacing: 1, fontWeight: 'bold' }}>{ex.optional ? 'OPT' : 'SETS'}</div>
+              <div style={{ fontSize: 15, color: ex.optional ? C.muted : C.blue, letterSpacing: 1, fontWeight: 'bold' }}>{ex.group ? 'PICK 1' : ex.optional ? 'OPT' : 'SETS'}</div>
             </div>
           ))}
         </div>
@@ -617,7 +618,7 @@ function Stepper({ value, onChange, step = 1, min = 0, max = 9999, label }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Exercise Card (collapsed / expanded with set entry)
 // ═══════════════════════════════════════════════════════════════════════════
-function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDeleteSet, onSkip, supabaseSessionId }) {
+function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDeleteSet, onSkip, skipLabel, supabaseSessionId }) {
   const allLogged = sets.filter(s => s.type !== 'swap')          // display + delete indexing
   const workSets = allLogged.filter(s => s.type !== 'challenge') // counts, progression, defaults
   const hasAnyLogs = workSets.length > 0
@@ -895,7 +896,7 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
       {!hasAnyLogs && !skipped && (
         <button onClick={onSkip}
           style={{ width: '100%', padding: 12, background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 10, color: C.muted, fontSize: 13, fontWeight: 700, letterSpacing: 1, cursor: 'pointer', fontFamily: 'inherit' }}>
-          {ex.optional ? 'NOT TODAY — SKIP' : 'SKIP THIS EXERCISE'}
+          {skipLabel ?? (ex.optional ? 'NOT TODAY — SKIP' : 'SKIP THIS EXERCISE')}
         </button>
       )}
     </div>
@@ -905,12 +906,133 @@ function ExerciseCard({ ex, sets, lastSets, expanded, onExpand, onLogSet, onDele
 // ═══════════════════════════════════════════════════════════════════════════
 // Session Screen (workout logging)
 // ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
+// Option slots — "pick one" groups
+//
+// Exercises on the same day that share an `option_group` label are
+// alternatives for ONE slot (e.g. Upper Chest Press: PL Incline / DB Incline /
+// Underhand DB Press). The session screen shows the slot as a row of options;
+// log sets on one and the rest are skipped. Each option keeps its own weight
+// and progression, so rotating for joint health never resets a lift.
+// ═══════════════════════════════════════════════════════════════════════════
+function buildSlots(exercises) {
+  const slots = []
+  const byGroup = {}
+  for (const ex of exercises) {
+    if (ex.group) {
+      if (!byGroup[ex.group]) {
+        byGroup[ex.group] = { key: `g:${ex.group}`, label: ex.group, options: [] }
+        slots.push(byGroup[ex.group])
+      }
+      byGroup[ex.group].options.push(ex)
+    } else {
+      slots.push({ key: ex.id, label: null, options: [ex] })
+    }
+  }
+  return slots
+}
+
+function agoLabel(iso) {
+  if (!iso) return 'never done'
+  const d = Math.floor((Date.now() - new Date(iso).getTime()) / 864e5)
+  return d <= 0 ? 'today' : d === 1 ? '1d ago' : `${d}d ago`
+}
+
+function optionTargetStr(o) {
+  if (o.type === 'chipper') return `${o.max ?? o.min} TOTAL`
+  return `${o.sets ?? '?'}×${o.max !== o.min ? `${o.min}-${o.max}` : o.min}`
+}
+
+function OptionSlot({
+  slot, sessionLogs, lastSessionLogs, lastDoneByEx,
+  expandedId, setExpandedId, isLogged,
+  onLogSet, onDeleteSet, onSkipSlot, supabaseSessionId,
+}) {
+  const chosen = slot.options.find(isLogged)
+  const picked = chosen ?? slot.options.find(o => o.id === expandedId)
+  const slotSkipped = !chosen && slot.options.every(o => (sessionLogs[o.id] || []).some(s => s.type === 'swap'))
+
+  // Rotation hint: the option done least recently (or never) is SUGGESTED.
+  // Only shown when the options actually differ in history.
+  const lastOf = o => { const t = lastDoneByEx?.[o._exercise_id]; return t ? new Date(t).getTime() : 0 }
+  let suggestedId = null
+  if (lastDoneByEx) {
+    const sorted = [...slot.options].sort((a, b) => lastOf(a) - lastOf(b))
+    if (lastOf(sorted[0]) !== lastOf(sorted[sorted.length - 1])) suggestedId = sorted[0].id
+  }
+
+  const badge = chosen ? 'LOCKED IN' : slotSkipped ? 'SKIPPED' : 'PICK ONE'
+
+  return (
+    <div style={{ border: `1px dashed ${C.border}`, borderRadius: 18, padding: '10px 8px 2px', marginBottom: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 8px 8px' }}>
+        <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 1.5, color: C.sub }}>{slot.label.toUpperCase()}</div>
+        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1, color: chosen ? C.acc : C.muted, border: `1px ${chosen ? 'solid' : 'dashed'} ${chosen ? C.acc : C.muted}`, borderRadius: 999, padding: '2px 8px' }}>{badge}</div>
+      </div>
+
+      {picked ? (
+        <>
+          <ExerciseCard key={picked.id}
+            ex={picked}
+            sets={sessionLogs[picked.id] || []}
+            lastSets={lastSessionLogs?.[picked.id]}
+            expanded={expandedId === picked.id}
+            onExpand={() => setExpandedId(expandedId === picked.id ? null : picked.id)}
+            onLogSet={s => onLogSet(picked.id, s)}
+            onDeleteSet={i => onDeleteSet(picked.id, i)}
+            onSkip={() => setExpandedId(null)}
+            skipLabel="PICK A DIFFERENT OPTION"
+            supabaseSessionId={supabaseSessionId}
+          />
+          {chosen && (
+            <div style={{ fontSize: 12, color: C.muted, padding: '0 8px 10px' }}>
+              Not today: {slot.options.filter(o => o.id !== chosen.id).map(o => o.name).join(' · ')}
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          {slot.options.map(o => (
+            <button key={o.id} onClick={() => setExpandedId(o.id)}
+              style={{ width: '100%', textAlign: 'left', background: C.surface, border: `1px solid ${o.id === suggestedId ? C.blue : C.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 8, cursor: 'pointer', fontFamily: 'inherit', color: C.text }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>
+                    {o.name}
+                    {o.id === suggestedId && (
+                      <span style={{ fontSize: 10, fontWeight: 800, color: C.blue, border: `1px solid ${C.blue}`, borderRadius: 999, padding: '2px 7px', marginLeft: 8, letterSpacing: 1, verticalAlign: 'middle' }}>SUGGESTED</span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginTop: 4, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 17, fontWeight: 800, fontFamily: 'monospace', color: C.text }}>{fmt(o.w)}<span style={{ fontSize: 12, fontWeight: 700, color: C.sub }}> lb</span></span>
+                    <span style={{ fontSize: 15, color: C.muted }}>·</span>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: C.sub }}>{optionTargetStr(o)}</span>
+                    {lastDoneByEx && <span style={{ fontSize: 12, color: C.muted }}>· last {agoLabel(lastDoneByEx[o._exercise_id])}</span>}
+                  </div>
+                </div>
+                <div style={{ fontSize: 13, color: C.blue, fontWeight: 800, letterSpacing: 1 }}>PICK</div>
+              </div>
+            </button>
+          ))}
+          {!slotSkipped && (
+            <button onClick={() => onSkipSlot(slot)}
+              style={{ width: '100%', padding: 10, marginBottom: 8, background: 'none', border: `0.5px solid ${C.border}`, borderRadius: 10, color: C.muted, fontSize: 12, fontWeight: 700, letterSpacing: 1, cursor: 'pointer', fontFamily: 'inherit' }}>
+              SKIP THIS SLOT
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 function SessionScreen({
   dayKey, split, onBack, onCompleteClick,
   sessionLogs, setSessionLogs,
   sessionExercises,
   supabaseSessionId,
   lastSessionLogs,
+  lastDoneByEx,
 }) {
   const day = split[dayKey]
   const [expandedId, setExpandedId] = useState(null)
@@ -920,9 +1042,15 @@ function SessionScreen({
   // Optional exercises are in the plan but don't gate completion — the progress
   // bar tracks the core work only, so skipping them still reads as a full day.
   const isLogged = ex => (sessionLogs[ex.id] || []).some(s => s.type !== 'swap' && s.type !== 'challenge')
-  const coreExercises = sessionExercises.filter(ex => !ex.optional)
-  const coreLogged = coreExercises.filter(isLogged).length
-  const optionalLogged = sessionExercises.filter(ex => ex.optional && isLogged(ex)).length
+  //
+  // "Pick one" option groups collapse into a single slot: a slot counts once,
+  // for whichever option was logged.
+  const slots = buildSlots(sessionExercises)
+  const chosenOf = slot => slot.options.find(isLogged)
+  const slotIsOptional = slot => slot.options.every(o => o.optional)
+  const coreSlots = slots.filter(s => !slotIsOptional(s))
+  const coreLogged = coreSlots.filter(s => chosenOf(s)).length
+  const optionalLogged = slots.filter(s => slotIsOptional(s) && chosenOf(s)).length
   const loggedCount = coreLogged + optionalLogged
 
   // Progress is tracked in SETS, not exercises — a 6-set lateral raise and a
@@ -930,12 +1058,15 @@ function SessionScreen({
   // rather than a set target and have their own bar inside the card, so they
   // sit out of this tally on both sides.
   const countedSets = ex => (sessionLogs[ex.id] || []).filter(s => s.type !== 'swap' && s.type !== 'challenge').length
-  const setExercises = coreExercises.filter(ex => ex.type !== 'chipper')
-  const targetSets = setExercises.reduce((a, ex) => a + (ex.sets ?? 0), 0)
-  const doneSets = setExercises.reduce((a, ex) => a + countedSets(ex), 0)
-  const optionalSets = sessionExercises
-    .filter(ex => ex.optional && ex.type !== 'chipper')
-    .reduce((a, ex) => a + countedSets(ex), 0)
+  // A slot's reference option is the one being done, else the first set-based
+  // option (so the bar has a sensible target before anything is picked).
+  const refOf = slot => chosenOf(slot) ?? slot.options.find(o => o.type !== 'chipper') ?? slot.options[0]
+  const setSlots = coreSlots.filter(s => refOf(s).type !== 'chipper')
+  const targetSets = setSlots.reduce((a, s) => a + (refOf(s).sets ?? 0), 0)
+  const doneSets = setSlots.reduce((a, s) => a + countedSets(refOf(s)), 0)
+  const optionalSets = slots
+    .filter(slotIsOptional)
+    .reduce((a, s) => a + s.options.filter(o => o.type !== 'chipper').reduce((b, o) => b + countedSets(o), 0), 0)
 
   function logSet(exerciseId, newSet) {
     const next = { ...sessionLogs, [exerciseId]: [...(sessionLogs[exerciseId] || []).filter(s => s.type !== 'swap'), newSet] }
@@ -963,6 +1094,13 @@ function SessionScreen({
     setExpandedId(null)
   }
 
+  function skipSlot(slot) {
+    const next = { ...sessionLogs }
+    for (const o of slot.options) next[o.id] = [{ type: 'swap' }]
+    setSessionLogs(next)
+    setExpandedId(null)
+  }
+
   return (
     <>
       {showPeek && <PeekModal split={split} currentDayKey={dayKey} onClose={() => setShowPeek(false)} />}
@@ -974,7 +1112,7 @@ function SessionScreen({
             <div style={{ fontSize: 22, fontWeight: 800, color: C.text, marginBottom: 8 }}>Finish session?</div>
             <div style={{ fontSize: 15, color: C.sub, lineHeight: 1.5, marginBottom: 24 }}>
               You logged {doneSets} of {targetSets} sets
-              {optionalSets > 0 ? ` plus ${optionalSets} optional` : ''}, across {coreLogged} of {coreExercises.length} exercises.
+              {optionalSets > 0 ? ` plus ${optionalSets} optional` : ''}, across {coreLogged} of {coreSlots.length} exercises.
               We'll calculate next week's targets.
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
@@ -1031,19 +1169,36 @@ function SessionScreen({
 
       {/* Exercise list */}
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '12px 14px 12px', background: C.bg }}>
-        {sessionExercises.map(ex => (
-          <ExerciseCard key={ex.id}
-            ex={ex}
-            sets={sessionLogs[ex.id] || []}
-            lastSets={lastSessionLogs?.[ex.id]}
-            expanded={expandedId === ex.id}
-            onExpand={() => setExpandedId(expandedId === ex.id ? null : ex.id)}
-            onLogSet={s => logSet(ex.id, s)}
-            onDeleteSet={i => deleteSet(ex.id, i)}
-            onSkip={() => skipExercise(ex.id)}
+        {slots.map(slot => slot.options.length > 1 ? (
+          <OptionSlot key={slot.key}
+            slot={slot}
+            sessionLogs={sessionLogs}
+            lastSessionLogs={lastSessionLogs}
+            lastDoneByEx={lastDoneByEx}
+            expandedId={expandedId}
+            setExpandedId={setExpandedId}
+            isLogged={isLogged}
+            onLogSet={logSet}
+            onDeleteSet={deleteSet}
+            onSkipSlot={skipSlot}
             supabaseSessionId={supabaseSessionId}
           />
-        ))}
+        ) : (() => {
+          const ex = slot.options[0]
+          return (
+            <ExerciseCard key={ex.id}
+              ex={ex}
+              sets={sessionLogs[ex.id] || []}
+              lastSets={lastSessionLogs?.[ex.id]}
+              expanded={expandedId === ex.id}
+              onExpand={() => setExpandedId(expandedId === ex.id ? null : ex.id)}
+              onLogSet={s => logSet(ex.id, s)}
+              onDeleteSet={i => deleteSet(ex.id, i)}
+              onSkip={() => skipExercise(ex.id)}
+              supabaseSessionId={supabaseSessionId}
+            />
+          )
+        })())}
 
         <button onClick={() => setShowCompleteConfirm(true)}
           disabled={loggedCount === 0}
@@ -1196,6 +1351,9 @@ function EditScreen({ split, onSave, onBack }) {
                               {ex.name}
                               {ex.optional && (
                                 <span style={{ fontSize: 10, fontWeight: 800, color: C.muted, border: `1px dashed ${C.muted}`, borderRadius: 999, padding: '2px 7px', marginLeft: 7, letterSpacing: 1, verticalAlign: 'middle' }}>OPTIONAL</span>
+                              )}
+                              {ex.group && (
+                                <span style={{ fontSize: 10, fontWeight: 800, color: C.blue, border: `1px solid ${C.blue}`, borderRadius: 999, padding: '2px 7px', marginLeft: 7, letterSpacing: 1, verticalAlign: 'middle' }}>{ex.group.toUpperCase()}</span>
                               )}
                             </div>
                             <div style={{ fontSize: 13, color: C.blue, fontWeight: 'bold', letterSpacing: 1 }}>SETS</div>
@@ -1853,6 +2011,9 @@ export default function App() {
   const [sessionResult, setSessionResult]     = useState(() => readActiveSession()?.sessionResult ?? null)
   const [supabaseSessionId, setSupabaseSessionId] = useState(() => readActiveSession()?.supabaseSessionId ?? null)
   const [lastSessionLogs, setLastSessionLogs] = useState(() => readActiveSession()?.lastSessionLogs ?? {})
+  // { [exerciseUuid]: last-logged timestamp } for exercises in "pick one" slots —
+  // drives the rotation hint. null until loaded (or when offline): hints hide.
+  const [lastDoneByEx, setLastDoneByEx] = useState(null)
 
   useEffect(() => {
     if (!dayKey || REFERENCE_DAY_KEYS.has(dayKey)) {
@@ -1861,6 +2022,14 @@ export default function App() {
     }
     writeActiveSession({ dayKey, sessionLogs, sessionExercises, sessionScreen, sessionResult, supabaseSessionId, lastSessionLogs })
   }, [dayKey, sessionLogs, sessionExercises, sessionScreen, sessionResult, supabaseSessionId, lastSessionLogs])
+
+  useEffect(() => {
+    const ids = sessionExercises.filter(e => e.group && e._exercise_id).map(e => e._exercise_id)
+    if (!user?.id || !ids.length) { setLastDoneByEx(null); return }
+    let cancelled = false
+    fetchLastDoneByExercise(user.id, ids, supabaseSessionId).then(m => { if (!cancelled) setLastDoneByEx(m) })
+    return () => { cancelled = true }
+  }, [dayKey, sessionExercises.length, user?.id, supabaseSessionId])
 
   const hasActiveSession = !!dayKey && sessionExercises.length > 0 && !REFERENCE_DAY_KEYS.has(dayKey)
   const currentCycle = dayKey ? (progress?.[dayKey]?.week ?? (REFERENCE_DAY_KEYS.has(dayKey) ? 1 : 3)) : 3
@@ -2145,6 +2314,7 @@ export default function App() {
             sessionExercises={sessionExercises}
             supabaseSessionId={supabaseSessionId}
             lastSessionLogs={lastSessionLogs}
+            lastDoneByEx={lastDoneByEx}
           />
         )
       )}
