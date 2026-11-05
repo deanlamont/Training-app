@@ -64,6 +64,12 @@ create table if not exists split_day_exercises (
 alter table split_day_exercises
   add column if not exists intensifier text;
 
+-- `option_group` marks "pick one" slots: rows on the same day sharing a label
+-- are alternatives for one slot (e.g. 'Upper Chest Press'); the app lets the
+-- user pick one and skip the rest. NULL = an ordinary single-exercise slot.
+alter table split_day_exercises
+  add column if not exists option_group text;
+
 -- `optional` exercises stay in the plan but don't count toward session
 -- completion — do them when there's time, skip them without penalty.
 alter table split_day_exercises

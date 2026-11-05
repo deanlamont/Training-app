@@ -205,6 +205,34 @@ export async function fetchPreviousSessionForDay(userId, splitDayId, excludeSess
 }
 
 /**
+ * When was each of these exercises last logged? Powers the rotation hint on
+ * "pick one" slots (least-recently-used option gets a SUGGESTED tag).
+ * Returns { [exerciseUuid]: ISO timestamp } or null on failure.
+ */
+export async function fetchLastDoneByExercise(userId, exerciseUuids, excludeSessionId = null) {
+  if (!supabase || !userId || !exerciseUuids?.length) return null
+  try {
+    let q = supabase
+      .from('set_logs')
+      .select('exercise_id, logged_at, session_id, sessions!inner(user_id)')
+      .in('exercise_id', exerciseUuids)
+      .eq('sessions.user_id', userId)
+      .not('set_type', 'like', 'challenge%')
+      .order('logged_at', { ascending: false })
+      .limit(500)
+    if (excludeSessionId) q = q.neq('session_id', excludeSessionId)
+    const { data, error } = await q
+    if (error) throw error
+    const out = {}
+    for (const r of data ?? []) if (!(r.exercise_id in out)) out[r.exercise_id] = r.logged_at
+    return out
+  } catch (e) {
+    console.error('[fetchLastDoneByExercise] failed', e)
+    return null
+  }
+}
+
+/**
  * Aggregates challenge results (set_logs with set_type 'challenge:*') into
  * home-screen scoreboard stats. "Beat" = higher weight than the previous
  * attempt of the same challenge on the same exercise, or same weight for
